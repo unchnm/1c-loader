@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 # GUI для загрузки изменённых XML/BSL-файлов в базу 1С
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -213,8 +213,9 @@ function Start-1CLoad {
 
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add('@echo off')
+    # Без кавычек вокруг server\base — так 1С:Предприятие надёжнее находит базу
     if ($Database.IsServer) {
-        $lines.Add("set ONEC_CONNECT=/S `"$($Database.Server)\$($Database.Ref)`"")
+        $lines.Add("set ONEC_CONNECT=/S $($Database.Server)\$($Database.Ref)")
     } else {
         $lines.Add("set ONEC_CONNECT=/F `"$($Database.FilePath)`"")
     }
