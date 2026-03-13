@@ -200,7 +200,7 @@ function Get-IBasesList {
 }
 
 function Start-1CLoad {
-    # Запускает 1cv8.exe DESIGNER /LoadConfigFromFiles напрямую, без посредников
+    # Записывает временный .cmd-файл и запускает его — cmd.exe сам разбирает кавычки
     param(
         [string]$OnecExePath,
         [pscustomobject]$Database,
@@ -208,20 +208,30 @@ function Start-1CLoad {
         [string[]]$RelFiles,
         [switch]$SkipDbUpdate
     )
+
+    $fileList = ($RelFiles | ForEach-Object { $_.Replace('/', '\') }) -join ','
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add('@echo off')
     if ($Database.IsServer) {
-        $connArg = "/S `"$($Database.Server)\$($Database.Ref)`""
+        $lines.Add("set ONEC_CONNECT=/S `"$($Database.Server)\$($Database.Ref)`"")
     } else {
-        $connArg = "/F `"$($Database.FilePath)`""
+        $lines.Add("set ONEC_CONNECT=/F `"$($Database.FilePath)`"")
     }
+    $cmdStr = "`"$OnecExePath`" DESIGNER %ONEC_CONNECT% /LoadConfigFromFiles `"$XmlDir`""
+    if ($fileList)          { $cmdStr += " /files `"$fileList`"" }
+    if (-not $SkipDbUpdate) { $cmdStr += ' /UpdateDBCfg' }
+    $lines.Add($cmdStr)
 
-    $fileList  = ($RelFiles | ForEach-Object { $_.Replace('/', '\') }) -join ','
-    $onecArgs  = "DESIGNER $connArg /LoadConfigFromFiles `"$XmlDir`""
-    if ($fileList)          { $onecArgs += " /files `"$fileList`"" }
-    if (-not $SkipDbUpdate) { $onecArgs += ' /UpdateDBCfg' }
+    # Лог для диагностики
+    $logPath = [IO.Path]::Combine($env:TEMP, '1c-loader-last-cmd.txt')
+    [IO.File]::WriteAllLines($logPath, $lines, [Text.Encoding]::UTF8)
 
-    # cmd.exe как обёртка — гарантирует корректный разбор кавычек на Windows
-    $cmdLine = "/c `"`"$OnecExePath`" $onecArgs`""
-    return Start-Process 'cmd.exe' -ArgumentList $cmdLine -WindowStyle Hidden -PassThru
+    $tmpBat = [IO.Path]::Combine($env:TEMP, "1c-load-$([Guid]::NewGuid().ToString('N')).cmd")
+    [IO.File]::WriteAllLines($tmpBat, $lines, [Text.Encoding]::ASCII)
+    $script:loadTmpBat = $tmpBat
+
+    return Start-Process 'cmd.exe' -ArgumentList "/c `"$tmpBat`"" -WindowStyle Hidden -PassThru
 }
 
 function Open-1CConfigurator {
@@ -245,6 +255,7 @@ $script:subPathFilter = ''
 $script:loadProc      = $null
 $script:loadTicks     = 0
 $script:loadingBase   = $null
+$script:loadTmpBat    = $null
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Форма
@@ -371,6 +382,12 @@ $loadTimer.add_Tick({
 
         $script:loadProc = $null
 
+        # Удалить временный .cmd файл
+        if ($null -ne $script:loadTmpBat) {
+            Remove-Item $script:loadTmpBat -Force -ErrorAction SilentlyContinue
+            $script:loadTmpBat = $null
+        }
+
         # Разблокировать UI
         $btnRead.Enabled = $true
         $cmbBase.Enabled = $true
@@ -398,7 +415,7 @@ $loadTimer.add_Tick({
             $lblStatus.ForeColor = [System.Drawing.Color]::Red
             $lblStatus.Text      = "Ошибка загрузки (код: $exitCode)."
             [System.Windows.Forms.MessageBox]::Show(
-                "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode",
+                "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode`n`nДиагностика: $env:TEMP\1c-loader-last-cmd.txt",
                 '1С Загрузчик',
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Error
