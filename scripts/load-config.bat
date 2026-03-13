@@ -87,13 +87,12 @@ if "%SKIP_UPDATE%"=="0" (
 "%ONEC_PATH%" DESIGNER !IB_PARAMS! !AUTH_PARAMS! /DisableStartupDialogs /LoadConfigFromFiles "%XML_DIR%" %LOAD_PARAMS% -updateConfigDumpInfo !UPDATE_PARAMS! /Out ".1c-log.txt"
 
 set "RESULT=%ERRORLEVEL%"
-taskkill /f /im 1cv8.exe >nul 2>nul
 
 if %RESULT% equ 0 (
     echo Загрузка завершена успешно
+    del /q ".1c-log.txt" >nul 2>nul
 ) else (
     echo Ошибка загрузки
     if exist ".1c-log.txt" type ".1c-log.txt"
 )
-del /q ".1c-log.txt" >nul 2>nul
 exit /b %RESULT%
