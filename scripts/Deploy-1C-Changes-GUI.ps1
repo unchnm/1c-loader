@@ -215,11 +215,13 @@ function Start-1CLoad {
     }
 
     $fileList  = ($RelFiles | ForEach-Object { $_.Replace('/', '\') }) -join ','
-    $designerArgs = "DESIGNER $connArg /LoadConfigFromFiles `"$XmlDir`""
-    if ($fileList)          { $designerArgs += " /files `"$fileList`"" }
-    if (-not $SkipDbUpdate) { $designerArgs += ' /UpdateDBCfg' }
+    $onecArgs  = "DESIGNER $connArg /LoadConfigFromFiles `"$XmlDir`""
+    if ($fileList)          { $onecArgs += " /files `"$fileList`"" }
+    if (-not $SkipDbUpdate) { $onecArgs += ' /UpdateDBCfg' }
 
-    return Start-Process $OnecExePath -ArgumentList $designerArgs -WindowStyle Hidden -PassThru
+    # cmd.exe как обёртка — гарантирует корректный разбор кавычек на Windows
+    $cmdLine = "/c `"`"$OnecExePath`" $onecArgs`""
+    return Start-Process 'cmd.exe' -ArgumentList $cmdLine -WindowStyle Hidden -PassThru
 }
 
 function Open-1CConfigurator {
