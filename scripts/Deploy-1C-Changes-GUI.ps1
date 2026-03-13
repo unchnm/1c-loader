@@ -199,40 +199,53 @@ function Get-IBasesList {
     return @($list | Where-Object { $_.Server -or $_.FilePath })
 }
 
-function Start-1CLoad {
-    # Записывает временный .cmd-файл и запускает его — cmd.exe сам разбирает кавычки
-    param(
-        [string]$OnecExePath,
-        [pscustomobject]$Database,
-        [string]$XmlDir,
-        [string[]]$RelFiles,
-        [switch]$SkipDbUpdate
-    )
-
-    $fileList = ($RelFiles | ForEach-Object { $_.Replace('/', '\') }) -join ','
-
+function Write-TempDevBase {
+    param([string]$ProjectRoot, [pscustomobject]$Database, [string]$OnecExePath)
+    $dp  = Join-Path $ProjectRoot '.1c-devbase.bat'
+    $bp  = Join-Path $ProjectRoot '.1c-devbase.bat.bak'
+    $had = Test-Path $dp
+    if ($had) { Copy-Item $dp $bp -Force }
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add('@echo off')
-    # Без кавычек вокруг server\base — так 1С:Предприятие надёжнее находит базу
+    $lines.Add("set `"ONEC_PATH=$OnecExePath`"")
     if ($Database.IsServer) {
-        $lines.Add("set ONEC_CONNECT=/S $($Database.Server)\$($Database.Ref)")
+        $lines.Add("set `"ONEC_SERVER=$($Database.Server)`"")
+        $lines.Add("set `"ONEC_BASE=$($Database.Ref)`"")
     } else {
-        $lines.Add("set ONEC_CONNECT=/F `"$($Database.FilePath)`"")
+        $lines.Add("set `"ONEC_FILEBASE_PATH=$($Database.FilePath)`"")
     }
-    $cmdStr = "`"$OnecExePath`" DESIGNER %ONEC_CONNECT% /LoadConfigFromFiles `"$XmlDir`""
-    if ($fileList)          { $cmdStr += " /files `"$fileList`"" }
-    if (-not $SkipDbUpdate) { $cmdStr += ' /UpdateDBCfg' }
-    $lines.Add($cmdStr)
+    [System.IO.File]::WriteAllLines($dp, $lines, [System.Text.Encoding]::ASCII)
+    return [pscustomobject]@{ DevBasePath = $dp; BackupPath = $bp; HadOriginal = $had }
+}
 
-    # Лог для диагностики
-    $logPath = [IO.Path]::Combine($env:TEMP, '1c-loader-last-cmd.txt')
-    [IO.File]::WriteAllLines($logPath, $lines, [Text.Encoding]::UTF8)
+function Restore-DevBase {
+    param([pscustomobject]$State)
+    try {
+        if ($State.HadOriginal -and (Test-Path $State.BackupPath)) {
+            Copy-Item $State.BackupPath $State.DevBasePath -Force
+            Remove-Item $State.BackupPath -Force -ErrorAction SilentlyContinue
+        } elseif (-not $State.HadOriginal -and (Test-Path $State.DevBasePath)) {
+            Remove-Item $State.DevBasePath -Force -ErrorAction SilentlyContinue
+        }
+    } catch { }
+}
 
-    $tmpBat = [IO.Path]::Combine($env:TEMP, "1c-load-$([Guid]::NewGuid().ToString('N')).cmd")
-    [IO.File]::WriteAllLines($tmpBat, $lines, [Text.Encoding]::ASCII)
-    $script:loadTmpBat = $tmpBat
+function Start-1CLoad {
+    param([string]$WorkingDirectory, [string]$XmlDir, [string[]]$RelFiles, [switch]$SkipDbUpdate)
 
-    return Start-Process 'cmd.exe' -ArgumentList "/c `"$tmpBat`"" -WindowStyle Hidden -PassThru
+    # Ищем load-config.bat: сначала в папке скрипта, затем в Cursor-скиллах
+    $localScript  = Join-Path $PSScriptRoot 'load-config.bat'
+    $cursorScript = Join-Path $HOME '.cursor\skills\1c-batch\scripts\load-config.bat'
+    if     (Test-Path $localScript)  { $skillScript = $localScript }
+    elseif (Test-Path $cursorScript) { $skillScript = $cursorScript }
+    else   { throw "load-config.bat не найден ни в $PSScriptRoot, ни в $cursorScript" }
+
+    $fileList = ($RelFiles | ForEach-Object { $_.Replace('/', '\') }) -join ','
+    $batArgs  = "`"$XmlDir`""
+    if ($fileList)     { $batArgs += " `"$fileList`"" }
+    if ($SkipDbUpdate) { $batArgs += ' skipdbupdate' }
+    $cmdLine = "/c `"`"$skillScript`" $batArgs`""
+    return Start-Process 'cmd.exe' -ArgumentList $cmdLine -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -PassThru
 }
 
 function Open-1CConfigurator {
@@ -253,10 +266,10 @@ $script:bases         = @()
 $script:gitRoot       = $null
 $script:xmlDir        = $null
 $script:subPathFilter = ''
+$script:devbaseState  = $null
 $script:loadProc      = $null
 $script:loadTicks     = 0
 $script:loadingBase   = $null
-$script:loadTmpBat    = $null
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Форма
@@ -383,10 +396,10 @@ $loadTimer.add_Tick({
 
         $script:loadProc = $null
 
-        # Удалить временный .cmd файл
-        if ($null -ne $script:loadTmpBat) {
-            Remove-Item $script:loadTmpBat -Force -ErrorAction SilentlyContinue
-            $script:loadTmpBat = $null
+        # Восстановить .1c-devbase.bat
+        if ($null -ne $script:devbaseState) {
+            Restore-DevBase -State $script:devbaseState
+            $script:devbaseState = $null
         }
 
         # Разблокировать UI
@@ -581,20 +594,38 @@ $btnLoad.add_Click({
     $btnRead.Enabled  = $false
     $cmbBase.Enabled  = $false
     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 102, 204)
-    $lblStatus.Text   = 'Запуск загрузки...'
+    $lblStatus.Text   = 'Подготовка к загрузке...'
+
+    # Создать временный .1c-devbase.bat
+    try {
+        $script:devbaseState = Write-TempDevBase `
+            -ProjectRoot $script:gitRoot `
+            -Database    $selectedBase `
+            -OnecExePath $onecExe
+    } catch {
+        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        $lblStatus.Text   = "Ошибка создания .1c-devbase.bat: $_"
+        $btnLoad.Enabled  = $true
+        $btnRead.Enabled  = $true
+        $cmbBase.Enabled  = $true
+        return
+    }
 
     # Запустить загрузку асинхронно (без -Wait — UI не зависает)
     try {
         $script:loadTicks = 0
         $script:loadProc  = Start-1CLoad `
-            -OnecExePath $onecExe `
-            -Database    $selectedBase `
-            -XmlDir      $script:xmlDir `
-            -RelFiles    $relFiles
+            -WorkingDirectory $script:gitRoot `
+            -XmlDir           $script:xmlDir `
+            -RelFiles         $relFiles
 
         $lblStatus.Text = 'Загрузка запущена...'
         $loadTimer.Start()
     } catch {
+        if ($null -ne $script:devbaseState) {
+            Restore-DevBase -State $script:devbaseState
+            $script:devbaseState = $null
+        }
         $lblStatus.ForeColor = [System.Drawing.Color]::Red
         $lblStatus.Text   = "Ошибка запуска загрузки: $_"
         $btnLoad.Enabled  = $true
@@ -628,6 +659,9 @@ if ($allBases -and $allBases.Count -gt 0) {
 # Очистка при закрытии формы
 $form.add_FormClosing({
     $loadTimer.Stop()
+    if ($null -ne $script:devbaseState) {
+        Restore-DevBase -State $script:devbaseState
+    }
 })
 
 # ─────────────────────────────────────────────────────────────────────────────

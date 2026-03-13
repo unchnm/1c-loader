@@ -29,7 +29,7 @@
 | Git for Windows | любая актуальная |
 | Платформа 1С:Предприятие | 8.3.x |
 
-Никаких дополнительных зависимостей нет — скрипт вызывает `1cv8.exe` напрямую.
+Никаких дополнительных зависимостей не требуется — `load-config.bat` входит в комплект и лежит рядом в папке `scripts/`.
 
 ---
 
@@ -40,6 +40,7 @@
 scripts/
   Deploy-1C-Changes-GUI.ps1           ← GUI-приложение (основной файл)
   Deploy-1C-Changes.ps1               ← консольная версия (для скриптов/CI)
+  load-config.bat                     ← загрузка XML/BSL в 1С (вызывается автоматически)
 ```
 
 ---
@@ -78,12 +79,13 @@ scripts/
 2. **Автоопределение корня конфигурации** — скрипт сам находит папку с `Configuration.xml`
    даже если репозиторий содержит и другие файлы (не только конфигурацию 1С).
 
-3. **Прямой вызов платформы** — для каждой загрузки формируется командная строка и
-   запускается `1cv8.exe DESIGNER` напрямую:
+3. **Вызов через `load-config.bat`** — для каждой загрузки скрипт записывает временный
+   `.1c-devbase.bat` с параметрами подключения и вызывает `scripts/load-config.bat`:
    ```
-   1cv8.exe DESIGNER /S "server\base" /LoadConfigFromFiles "path\to\xml"
-                     /files "CommonModules\Mod\Ext\Module.bsl,Documents\Doc\..."
-                     /UpdateDBCfg
+   1cv8.exe DESIGNER /S "server\base" /DisableStartupDialogs
+            /LoadConfigFromFiles "path\to\xml"
+            -files "CommonModules\Mod\Ext\Module.bsl,Documents\Doc\..."
+            -Format Hierarchical /UpdateDBCfg
    ```
 
 4. **Асинхронное выполнение** — UI не зависает во время работы платформы 1С
