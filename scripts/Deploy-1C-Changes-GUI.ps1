@@ -596,6 +596,18 @@ $btnLoad.add_Click({
         return
     }
 
+    # Проверить: не открыт ли конфигуратор для этой базы
+    $baseRef  = if ($selectedBase.IsServer) { $selectedBase.Ref } else { $selectedBase.FilePath }
+    $confProc = Get-WmiObject Win32_Process -Filter "Name='1cv8.exe'" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -match 'DESIGNER' -and $_.CommandLine -match [regex]::Escape($baseRef) }
+    if ($confProc) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Конфигуратор базы `"$($selectedBase.Name)`" уже открыт.`n`nЗакройте конфигуратор и повторите загрузку.",
+            '1С Загрузчик', 'OK', 'Warning'
+        ) | Out-Null
+        return
+    }
+
     # Заблокировать UI
     $btnLoad.Enabled  = $false
     $btnRead.Enabled  = $false
