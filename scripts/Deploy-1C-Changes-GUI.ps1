@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # GUI для загрузки изменённых XML/BSL-файлов в базу 1С
 
 Add-Type -AssemblyName System.Windows.Forms
