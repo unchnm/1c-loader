@@ -276,7 +276,7 @@ $script:loadingBase   = $null
 # ─────────────────────────────────────────────────────────────────────────────
 $form                  = New-Object System.Windows.Forms.Form
 $form.Text             = '1С: Загрузка изменённых файлов'
-$form.ClientSize       = New-Object System.Drawing.Size(660, 480)
+$form.ClientSize       = New-Object System.Drawing.Size(660, 500)
 $form.FormBorderStyle  = 'FixedSingle'
 $form.MaximizeBox      = $false
 $form.StartPosition    = 'CenterScreen'
@@ -341,26 +341,33 @@ $checkedList.BorderStyle        = 'FixedSingle'
 # ── Чекбокс «Открыть конфигуратор» ───────────────────────────────────────────
 $chkOpenConf          = New-Object System.Windows.Forms.CheckBox
 $chkOpenConf.Text     = 'Открыть конфигуратор после успешной загрузки'
-$chkOpenConf.Location = New-Object System.Drawing.Point(12, 380)
+$chkOpenConf.Location = New-Object System.Drawing.Point(12, 378)
 $chkOpenConf.Size     = New-Object System.Drawing.Size(420, 20)
 $chkOpenConf.Checked  = $false
 
+# ── Чекбокс «Не обновлять конфигурацию БД» ────────────────────────────────────
+$chkSkipDbUpdate          = New-Object System.Windows.Forms.CheckBox
+$chkSkipDbUpdate.Text     = 'Не обновлять конфигурацию базы данных'
+$chkSkipDbUpdate.Location = New-Object System.Drawing.Point(12, 400)
+$chkSkipDbUpdate.Size     = New-Object System.Drawing.Size(500, 20)
+$chkSkipDbUpdate.Checked  = $false
+
 # ── Разделитель ───────────────────────────────────────────────────────────────
 $sep            = New-Object System.Windows.Forms.Panel
-$sep.Location   = New-Object System.Drawing.Point(0, 410)
+$sep.Location   = New-Object System.Drawing.Point(0, 430)
 $sep.Size       = New-Object System.Drawing.Size(660, 1)
 $sep.BackColor  = [System.Drawing.Color]::FromArgb(220, 220, 220)
 
 # ── Статус + кнопка «Загрузить» ───────────────────────────────────────────────
 $lblStatus           = New-Object System.Windows.Forms.Label
 $lblStatus.Text      = 'Выберите папку и базу, затем нажмите "Прочитать изменения"'
-$lblStatus.Location  = New-Object System.Drawing.Point(12, 418)
+$lblStatus.Location  = New-Object System.Drawing.Point(12, 438)
 $lblStatus.Size      = New-Object System.Drawing.Size(400, 36)
 $lblStatus.ForeColor = [System.Drawing.Color]::Gray
 
 $btnLoad             = New-Object System.Windows.Forms.Button
 $btnLoad.Text        = 'Загрузить выбранные'
-$btnLoad.Location    = New-Object System.Drawing.Point(444, 416)
+$btnLoad.Location    = New-Object System.Drawing.Point(444, 436)
 $btnLoad.Size        = New-Object System.Drawing.Size(204, 36)
 $btnLoad.Enabled     = $false
 $btnLoad.FlatStyle   = 'Flat'
@@ -374,7 +381,7 @@ $form.Controls.AddRange(@(
     $lblBase, $cmbBase,
     $btnRead, $lblFound,
     $lblFiles, $checkedList,
-    $chkOpenConf,
+    $chkOpenConf, $chkSkipDbUpdate,
     $sep, $lblStatus, $btnLoad
 ))
 
@@ -617,7 +624,8 @@ $btnLoad.add_Click({
         $script:loadProc  = Start-1CLoad `
             -WorkingDirectory $script:gitRoot `
             -XmlDir           $script:xmlDir `
-            -RelFiles         $relFiles
+            -RelFiles         $relFiles `
+            -SkipDbUpdate:($chkSkipDbUpdate.Checked)
 
         $lblStatus.Text = 'Загрузка запущена...'
         $loadTimer.Start()
