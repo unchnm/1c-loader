@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Загружает изменённые (по git) XML/BSL-файлы в выбранную базу 1С.
@@ -146,7 +146,7 @@ function Get-GitChangedFiles {
     param([string]$GitRoot, [string]$SubPath = '')
     Push-Location $GitRoot
     try {
-        # Незакоммиченные изменения рабочей копии
+        # Незакоммиченные изменения рабочей копии (изменённые, добавленные в индекс)
         $unstaged = & git diff HEAD --name-only --diff-filter=ACMR 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw ('git diff завершился с ошибкой: ' + ($unstaged -join ' '))
@@ -156,8 +156,12 @@ function Get-GitChangedFiles {
         $staged = @(& git diff --cached --name-only --diff-filter=ACMR 2>&1)
         if ($LASTEXITCODE -ne 0) { $staged = @() }
 
+        # Новые (неотслеживаемые) файлы
+        $untracked = @(& git ls-files --others --exclude-standard 2>&1)
+        if ($LASTEXITCODE -ne 0) { $untracked = @() }
+
         [string[]]$allFiles = @(
-            (@($unstaged) + $staged) |
+            (@($unstaged) + $staged + $untracked) |
                 Where-Object { $_ -and ($_ -match '\.(xml|bsl)$') } |
                 ForEach-Object { $_.Replace('\', '/').Trim() } |
                 Where-Object { $_ } |
@@ -511,8 +515,8 @@ if ($xmlDir) {
     $xmlDir = $projectFolder
 }
 
-# ── 2. Изменённые файлы ───────────────────────────────────────────────────────
-Write-Step '2' 'Изменённые файлы (git diff HEAD)'
+# ── 2. Изменённые и новые файлы ───────────────────────────────────────────────
+Write-Step '2' 'Изменённые и новые файлы (git diff + untracked)'
 
 # Фильтр: только файлы внутри xmlDir (относительно gitRoot)
 $subPathFilter = ''
@@ -528,7 +532,7 @@ try {
 }
 
 if ($changedFiles.Count -eq 0) {
-    Write-Warn 'Незакоммиченных изменений в XML/BSL-файлах не обнаружено.'
+    Write-Warn 'Незакоммиченных изменений и новых XML/BSL-файлов не обнаружено.'
     Write-Info "Проверьте 'git status' в папке: $gitRoot"
     Exit-Script 0
 }

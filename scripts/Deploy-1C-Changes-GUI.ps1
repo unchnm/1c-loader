@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 # GUI для загрузки изменённых XML/BSL-файлов в базу 1С
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -120,9 +120,12 @@ function Get-GitChangedFiles {
         if ($LASTEXITCODE -ne 0) { throw ('git diff error: ' + ($unstaged -join ' ')) }
         $staged = @(& git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR 2>&1)
         if ($LASTEXITCODE -ne 0) { $staged = @() }
+        # Новые (неотслеживаемые) файлы
+        $untracked = @(& git -c core.quotepath=false ls-files --others --exclude-standard 2>&1)
+        if ($LASTEXITCODE -ne 0) { $untracked = @() }
 
         [string[]]$all = @(
-            (@($unstaged) + $staged) |
+            (@($unstaged) + $staged + $untracked) |
                 Where-Object { $_ -and $_ -match '\.(xml|bsl)$' } |
                 ForEach-Object { $_.Replace('\', '/').Trim() } |
                 Where-Object { $_ } |
