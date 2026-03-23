@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Загружает изменённые (по git) XML/BSL-файлы в выбранную базу 1С.
