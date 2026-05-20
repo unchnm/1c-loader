@@ -217,20 +217,51 @@ function Find-OnecXmlRoot {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Шаг 4: Поиск 1cv8.exe
+# Платформа 1С: версия из ibases.v8i и поиск 1cv8.exe
 # ─────────────────────────────────────────────────────────────────────────────
 
-function Find-1CExecutable {
-    $regPaths = @('HKLM:\SOFTWARE\1C\1Cv8', 'HKLM:\SOFTWARE\WOW6432Node\1C\1Cv8')
-    foreach ($regPath in $regPaths) {
+function Get-BasePlatformVersion {
+    param([pscustomobject]$Base)
+    if ($Base.DefaultVersion) { return $Base.DefaultVersion.Trim() }
+    if ($Base.Version) { return $Base.Version.Trim() }
+    return $null
+}
+
+function ConvertTo-VersionComparable {
+    param([string]$VersionString)
+    if (-not $VersionString) { return $null }
+    $parts = $VersionString.Trim() -split '\.'
+    if ($parts.Count -lt 2) { return $null }
+    try {
+        while ($parts.Count -lt 4) { $parts += '0' }
+        return [version]::new([int]$parts[0], [int]$parts[1], [int]$parts[2], [int]$parts[3])
+    } catch {
+        return $null
+    }
+}
+
+function Test-VersionPrefixMatch {
+    param([string]$Installed, [string]$Required)
+    $reqParts  = $Required.Trim().TrimEnd('.') -split '\.'
+    $instParts = $Installed.Trim() -split '\.'
+    if ($instParts.Count -lt $reqParts.Count) { return $false }
+    for ($i = 0; $i -lt $reqParts.Count; $i++) {
+        if ($instParts[$i] -ne $reqParts[$i]) { return $false }
+    }
+    return $true
+}
+
+function Get-Installed1CPlatforms {
+    $found = @{}
+
+    foreach ($regPath in @('HKLM:\SOFTWARE\1C\1Cv8', 'HKLM:\SOFTWARE\WOW6432Node\1C\1Cv8')) {
         if (-not (Test-Path $regPath)) { continue }
-        $versions = Get-ChildItem $regPath -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-        foreach ($ver in $versions) {
+        foreach ($ver in (Get-ChildItem $regPath -ErrorAction SilentlyContinue)) {
             try {
                 $loc = (Get-ItemProperty $ver.PSPath -ErrorAction Stop).InstallLocation
                 if ($loc) {
                     $exe = Join-Path $loc 'bin\1cv8.exe'
-                    if (Test-Path $exe) { return $exe }
+                    if (Test-Path $exe) { $found[$ver.Name] = $exe }
                 }
             } catch { continue }
         }
@@ -238,14 +269,77 @@ function Find-1CExecutable {
 
     foreach ($root in @('C:\Program Files\1cv8', 'C:\Program Files (x86)\1cv8')) {
         if (-not (Test-Path $root)) { continue }
-        $versions = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-        foreach ($ver in $versions) {
+        foreach ($ver in (Get-ChildItem $root -Directory -ErrorAction SilentlyContinue)) {
             $exe = Join-Path $ver.FullName 'bin\1cv8.exe'
-            if (Test-Path $exe) { return $exe }
+            if (Test-Path $exe) { $found[$ver.Name] = $exe }
         }
     }
 
-    return $null
+    return @(
+        $found.GetEnumerator() | ForEach-Object {
+            $vObj = ConvertTo-VersionComparable $_.Key
+            if ($vObj) {
+                [pscustomobject]@{ Version = $_.Key; Path = $_.Value; VersionObj = $vObj }
+            }
+        } | Sort-Object VersionObj -Descending
+    )
+}
+
+function Find-1CExecutable {
+    param([string]$RequiredVersion = '')
+
+    $platforms = @(Get-Installed1CPlatforms)
+    if ($platforms.Count -eq 0) {
+        return [pscustomobject]@{
+            Path           = $null
+            MatchedVersion = $null
+            UsedFallback   = $false
+            Warning        = $null
+        }
+    }
+
+    if (-not $RequiredVersion) {
+        $best = $platforms[0]
+        return [pscustomobject]@{
+            Path           = $best.Path
+            MatchedVersion = $best.Version
+            UsedFallback   = $true
+            Warning        = 'Версия платформы для базы не указана в ibases.v8i — используется новейшая установленная.'
+        }
+    }
+
+    $req = $RequiredVersion.Trim()
+
+    $exact = $platforms | Where-Object { $_.Version -eq $req } | Select-Object -First 1
+    if ($exact) {
+        return [pscustomobject]@{
+            Path           = $exact.Path
+            MatchedVersion = $exact.Version
+            UsedFallback   = $false
+            Warning        = $null
+        }
+    }
+
+    $candidates = @($platforms | Where-Object {
+        (Test-VersionPrefixMatch -Installed $_.Version -Required $req) -and ($_.Version -ne $req)
+    })
+    if ($candidates.Count -gt 0) {
+        $best = $candidates[0]
+        return [pscustomobject]@{
+            Path           = $best.Path
+            MatchedVersion = $best.Version
+            UsedFallback   = $true
+            Warning        = "Точная версия $req не найдена — используется $($best.Version)"
+        }
+    }
+
+    $newest = $platforms[0]
+    return [pscustomobject]@{
+        Path           = $newest.Path
+        MatchedVersion = $newest.Version
+        UsedFallback   = $true
+        Warning        = "Версия $req не установлена — используется $($newest.Version)"
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -278,17 +372,25 @@ function Get-IBasesList {
         if ($line -match '^\[(.+)\]$') {
             if ($null -ne $current) { $bases.Add($current) }
             $current = [pscustomobject]@{
-                Name     = $Matches[1].Trim()
-                Server   = ''
-                Ref      = ''
-                FilePath = ''
-                IsServer = $false
+                Name            = $Matches[1].Trim()
+                Server          = ''
+                Ref             = ''
+                FilePath        = ''
+                IsServer        = $false
+                Version         = ''
+                DefaultVersion  = ''
             }
-        } elseif ($null -ne $current -and $line -match '^Connect\s*=\s*(.+)$') {
-            $conn = $Matches[1].Trim().TrimEnd(';')
-            if ($conn -match 'Srvr\s*=\s*"([^"]*)"') { $current.Server = $Matches[1]; $current.IsServer = $true }
-            if ($conn -match 'Ref\s*=\s*"([^"]*)"')  { $current.Ref    = $Matches[1] }
-            if ($conn -match 'File\s*=\s*"([^"]*)"') { $current.FilePath = $Matches[1] }
+        } elseif ($null -ne $current) {
+            if ($line -match '^Connect\s*=\s*(.+)$') {
+                $conn = $Matches[1].Trim().TrimEnd(';')
+                if ($conn -match 'Srvr\s*=\s*"([^"]*)"') { $current.Server = $Matches[1]; $current.IsServer = $true }
+                if ($conn -match 'Ref\s*=\s*"([^"]*)"')  { $current.Ref    = $Matches[1] }
+                if ($conn -match 'File\s*=\s*"([^"]*)"') { $current.FilePath = $Matches[1] }
+            } elseif ($line -match '^Version\s*=\s*(.+)$') {
+                $current.Version = $Matches[1].Trim()
+            } elseif ($line -match '^DefaultVersion\s*=\s*(.+)$') {
+                $current.DefaultVersion = $Matches[1].Trim()
+            }
         }
     }
     if ($null -ne $current) { $bases.Add($current) }
@@ -549,18 +651,8 @@ if ($DryRun) {
     Exit-Script 0
 }
 
-# ── 3. Платформа 1С ───────────────────────────────────────────────────────────
-Write-Step '3' 'Платформа 1С'
-
-$onecExe = Find-1CExecutable
-if (-not $onecExe) {
-    Write-Fail '1cv8.exe не найден. Установите платформу 1С:Предприятие 8.3.'
-    Exit-Script 1
-}
-Write-Ok "Найдена: $onecExe"
-
-# ── 4. Выбор базы ─────────────────────────────────────────────────────────────
-Write-Step '4' 'База 1С'
+# ── 3. Выбор базы ─────────────────────────────────────────────────────────────
+Write-Step '3' 'База 1С'
 
 $bases = Get-IBasesList
 if (-not $bases -or $bases.Count -eq 0) {
@@ -588,6 +680,24 @@ if ($selectedIdx -lt 0) {
 $selectedBase = $bases[$selectedIdx]
 Write-Ok "База: $($selectedBase.Name)"
 
+# ── 4. Платформа 1С (версия из ibases.v8i) ────────────────────────────────────
+Write-Step '4' 'Платформа 1С'
+
+$requiredVer = Get-BasePlatformVersion -Base $selectedBase
+$platform    = Find-1CExecutable -RequiredVersion $requiredVer
+if (-not $platform.Path) {
+    Write-Fail '1cv8.exe не найден. Установите платформу 1С:Предприятие 8.3.'
+    Exit-Script 1
+}
+$onecExe = $platform.Path
+if ($platform.Warning) { Write-Warn $platform.Warning }
+if ($requiredVer) {
+    Write-Ok "Платформа: $requiredVer → $($platform.MatchedVersion)"
+} else {
+    Write-Ok "Платформа: $($platform.MatchedVersion) (версия в ibases.v8i не задана)"
+}
+Write-Info $onecExe
+
 # ── 5. Подтверждение ──────────────────────────────────────────────────────────
 Write-Step '5' 'Подтверждение'
 Write-Host ''
@@ -614,7 +724,7 @@ if ($confirm -and ($confirm -notmatch '^[YyДд]?$')) {
 }
 
 # ── 6. Загрузка ───────────────────────────────────────────────────────────────
-Write-Step '6' 'Загрузка'
+Write-Step '6' 'Загрузка в базу'
 
 # Пути файлов относительно xmlDir
 # git diff возвращает пути относительно gitRoot, убираем prefix subPathFilter
