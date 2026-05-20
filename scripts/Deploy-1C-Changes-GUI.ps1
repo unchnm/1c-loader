@@ -152,24 +152,123 @@ function Find-OnecXmlRoot {
     return $null
 }
 
-function Find-1CExecutable {
+function Get-BasePlatformVersion {
+    param([pscustomobject]$Base)
+    if ($Base.DefaultVersion) { return $Base.DefaultVersion.Trim() }
+    if ($Base.Version) { return $Base.Version.Trim() }
+    return $null
+}
+
+function ConvertTo-VersionComparable {
+    param([string]$VersionString)
+    if (-not $VersionString) { return $null }
+    $parts = $VersionString.Trim() -split '\.'
+    if ($parts.Count -lt 2) { return $null }
+    try {
+        while ($parts.Count -lt 4) { $parts += '0' }
+        return [version]::new([int]$parts[0], [int]$parts[1], [int]$parts[2], [int]$parts[3])
+    } catch {
+        return $null
+    }
+}
+
+function Test-VersionPrefixMatch {
+    param([string]$Installed, [string]$Required)
+    $reqParts  = $Required.Trim().TrimEnd('.') -split '\.'
+    $instParts = $Installed.Trim() -split '\.'
+    if ($instParts.Count -lt $reqParts.Count) { return $false }
+    for ($i = 0; $i -lt $reqParts.Count; $i++) {
+        if ($instParts[$i] -ne $reqParts[$i]) { return $false }
+    }
+    return $true
+}
+
+function Get-Installed1CPlatforms {
+    $found = @{}
     foreach ($rp in @('HKLM:\SOFTWARE\1C\1Cv8', 'HKLM:\SOFTWARE\WOW6432Node\1C\1Cv8')) {
         if (-not (Test-Path $rp)) { continue }
-        foreach ($v in (Get-ChildItem $rp -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+        foreach ($v in (Get-ChildItem $rp -ErrorAction SilentlyContinue)) {
             try {
                 $loc = (Get-ItemProperty $v.PSPath -ErrorAction Stop).InstallLocation
-                if ($loc) { $e = Join-Path $loc 'bin\1cv8.exe'; if (Test-Path $e) { return $e } }
+                if ($loc) {
+                    $e = Join-Path $loc 'bin\1cv8.exe'
+                    if (Test-Path $e) { $found[$v.Name] = $e }
+                }
             } catch { continue }
         }
     }
     foreach ($root in @('C:\Program Files\1cv8', 'C:\Program Files (x86)\1cv8')) {
         if (-not (Test-Path $root)) { continue }
-        foreach ($v in (Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+        foreach ($v in (Get-ChildItem $root -Directory -ErrorAction SilentlyContinue)) {
             $e = Join-Path $v.FullName 'bin\1cv8.exe'
-            if (Test-Path $e) { return $e }
+            if (Test-Path $e) { $found[$v.Name] = $e }
         }
     }
-    return $null
+    return @(
+        $found.GetEnumerator() | ForEach-Object {
+            $vObj = ConvertTo-VersionComparable $_.Key
+            if ($vObj) {
+                [pscustomobject]@{ Version = $_.Key; Path = $_.Value; VersionObj = $vObj }
+            }
+        } | Sort-Object VersionObj -Descending
+    )
+}
+
+function Find-1CExecutable {
+    param([string]$RequiredVersion = '')
+
+    $platforms = @(Get-Installed1CPlatforms)
+    if ($platforms.Count -eq 0) {
+        return [pscustomobject]@{
+            Path           = $null
+            MatchedVersion = $null
+            UsedFallback   = $false
+            Warning        = $null
+        }
+    }
+
+    if (-not $RequiredVersion) {
+        $best = $platforms[0]
+        return [pscustomobject]@{
+            Path           = $best.Path
+            MatchedVersion = $best.Version
+            UsedFallback   = $true
+            Warning        = 'Версия платформы для базы не указана в ibases.v8i — используется новейшая установленная.'
+        }
+    }
+
+    $req = $RequiredVersion.Trim()
+
+    $exact = $platforms | Where-Object { $_.Version -eq $req } | Select-Object -First 1
+    if ($exact) {
+        return [pscustomobject]@{
+            Path           = $exact.Path
+            MatchedVersion = $exact.Version
+            UsedFallback   = $false
+            Warning        = $null
+        }
+    }
+
+    $candidates = @($platforms | Where-Object {
+        (Test-VersionPrefixMatch -Installed $_.Version -Required $req) -and ($_.Version -ne $req)
+    })
+    if ($candidates.Count -gt 0) {
+        $best = $candidates[0]
+        return [pscustomobject]@{
+            Path           = $best.Path
+            MatchedVersion = $best.Version
+            UsedFallback   = $true
+            Warning        = "Точная версия $req не найдена — используется $($best.Version)"
+        }
+    }
+
+    $newest = $platforms[0]
+    return [pscustomobject]@{
+        Path           = $newest.Path
+        MatchedVersion = $newest.Version
+        UsedFallback   = $true
+        Warning        = "Версия $req не установлена — используется $($newest.Version)"
+    }
 }
 
 function Get-IBasesList {
@@ -190,12 +289,21 @@ function Get-IBasesList {
         $line = $line.Trim(); if (-not $line) { continue }
         if ($line -match '^\[(.+)\]$') {
             if ($cur) { $list.Add($cur) }
-            $cur = [pscustomobject]@{ Name = $Matches[1].Trim(); Server = ''; Ref = ''; FilePath = ''; IsServer = $false }
-        } elseif ($cur -and $line -match '^Connect\s*=\s*(.+)$') {
-            $conn = $Matches[1].TrimEnd(';')
-            if ($conn -match 'Srvr\s*=\s*"([^"]*)"') { $cur.Server = $Matches[1]; $cur.IsServer = $true }
-            if ($conn -match 'Ref\s*=\s*"([^"]*)"')  { $cur.Ref    = $Matches[1] }
-            if ($conn -match 'File\s*=\s*"([^"]*)"') { $cur.FilePath = $Matches[1] }
+            $cur = [pscustomobject]@{
+                Name = $Matches[1].Trim(); Server = ''; Ref = ''; FilePath = ''
+                IsServer = $false; Version = ''; DefaultVersion = ''
+            }
+        } elseif ($cur) {
+            if ($line -match '^Connect\s*=\s*(.+)$') {
+                $conn = $Matches[1].TrimEnd(';')
+                if ($conn -match 'Srvr\s*=\s*"([^"]*)"') { $cur.Server = $Matches[1]; $cur.IsServer = $true }
+                if ($conn -match 'Ref\s*=\s*"([^"]*)"')  { $cur.Ref    = $Matches[1] }
+                if ($conn -match 'File\s*=\s*"([^"]*)"') { $cur.FilePath = $Matches[1] }
+            } elseif ($line -match '^Version\s*=\s*(.+)$') {
+                $cur.Version = $Matches[1].Trim()
+            } elseif ($line -match '^DefaultVersion\s*=\s*(.+)$') {
+                $cur.DefaultVersion = $Matches[1].Trim()
+            }
         }
     }
     if ($cur) { $list.Add($cur) }
@@ -273,6 +381,7 @@ $script:devbaseState  = $null
 $script:loadProc      = $null
 $script:loadTicks     = 0
 $script:loadingBase   = $null
+$script:loadingOnecExe = $null
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Форма
@@ -428,11 +537,8 @@ $loadTimer.add_Tick({
             ) | Out-Null
 
             # Открыть конфигуратор если опция выбрана
-            if ($chkOpenConf.Checked -and $null -ne $script:loadingBase) {
-                $onecExe = Find-1CExecutable
-                if ($onecExe) {
-                    Open-1CConfigurator -OnecExePath $onecExe -Database $script:loadingBase
-                }
+            if ($chkOpenConf.Checked -and $null -ne $script:loadingBase -and $script:loadingOnecExe) {
+                Open-1CConfigurator -OnecExePath $script:loadingOnecExe -Database $script:loadingBase
             }
             $script:loadingBase = $null
         } else {
@@ -589,15 +695,18 @@ $btnLoad.add_Click({
         else                       { $_ }
     })
 
-    # Найти 1cv8.exe
-    $onecExe = Find-1CExecutable
-    if (-not $onecExe) {
+    # Найти 1cv8.exe по версии из ibases.v8i
+    $requiredVer = Get-BasePlatformVersion -Base $selectedBase
+    $platform    = Find-1CExecutable -RequiredVersion $requiredVer
+    if (-not $platform.Path) {
         [System.Windows.Forms.MessageBox]::Show(
             '1cv8.exe не найден. Установите платформу 1С:Предприятие.',
             '1С Загрузчик', 'OK', 'Error'
         ) | Out-Null
         return
     }
+    $onecExe = $platform.Path
+    $script:loadingOnecExe = $onecExe
 
     # Проверить: не открыт ли конфигуратор для этой базы
     $baseRef  = if ($selectedBase.IsServer) { $selectedBase.Ref } else { $selectedBase.FilePath }
@@ -616,7 +725,13 @@ $btnLoad.add_Click({
     $btnRead.Enabled  = $false
     $cmbBase.Enabled  = $false
     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 102, 204)
-    $lblStatus.Text   = 'Подготовка к загрузке...'
+    if ($platform.Warning) {
+        $lblStatus.Text = "Платформа: $($platform.MatchedVersion). $($platform.Warning)"
+    } elseif ($requiredVer) {
+        $lblStatus.Text = "Платформа: $requiredVer → $($platform.MatchedVersion). Подготовка..."
+    } else {
+        $lblStatus.Text = "Платформа: $($platform.MatchedVersion). Подготовка..."
+    }
 
     # Создать временный .1c-devbase.bat
     try {
