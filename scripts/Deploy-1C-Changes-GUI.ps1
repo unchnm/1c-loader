@@ -310,6 +310,36 @@ function Get-IBasesList {
     return @($list | Where-Object { $_.Server -or $_.FilePath })
 }
 
+function Update-BasesComboBox {
+    $prevName = $null
+    if ($script:bases -and $cmbBase.SelectedIndex -ge 0 -and $cmbBase.SelectedIndex -lt $script:bases.Count) {
+        $prevName = $script:bases[$cmbBase.SelectedIndex].Name
+    }
+
+    $cmbBase.Items.Clear()
+    $allBases = Get-IBasesList
+    if ($allBases -and $allBases.Count -gt 0) {
+        $script:bases = $allBases
+        $cmbBase.Enabled = $true
+        $sel = 0
+        for ($i = 0; $i -lt $allBases.Count; $i++) {
+            $b = $allBases[$i]
+            $label = if ($b.IsServer) {
+                "$($b.Name)   [$($b.Server) / $($b.Ref)]"
+            } else {
+                "$($b.Name)   [$($b.FilePath)]"
+            }
+            [void]$cmbBase.Items.Add($label)
+            if ($prevName -and $b.Name -eq $prevName) { $sel = $i }
+        }
+        $cmbBase.SelectedIndex = $sel
+    } else {
+        $script:bases = @()
+        [void]$cmbBase.Items.Add('Базы не найдены — запустите 1С:Предприятие и добавьте базы')
+        $cmbBase.Enabled = $false
+    }
+}
+
 function Write-TempDevBase {
     param([string]$ProjectRoot, [pscustomobject]$Database, [string]$OnecExePath)
     $dp  = Join-Path $ProjectRoot '.1c-devbase.bat'
@@ -419,9 +449,15 @@ $lblBase.AutoSize  = $true
 
 $cmbBase                = New-Object System.Windows.Forms.ComboBox
 $cmbBase.Location       = New-Object System.Drawing.Point(12, 94)
-$cmbBase.Size           = New-Object System.Drawing.Size(636, 26)
+$cmbBase.Size           = New-Object System.Drawing.Size(518, 26)
 $cmbBase.DropDownStyle  = 'DropDownList'
 $cmbBase.FlatStyle      = 'System'
+
+$btnRefreshBases          = New-Object System.Windows.Forms.Button
+$btnRefreshBases.Text     = 'Обновить'
+$btnRefreshBases.Location = New-Object System.Drawing.Point(538, 92)
+$btnRefreshBases.Size     = New-Object System.Drawing.Size(110, 28)
+$btnRefreshBases.FlatStyle = 'System'
 
 # ── Кнопка «Прочитать» + счётчик ─────────────────────────────────────────────
 $btnRead            = New-Object System.Windows.Forms.Button
@@ -441,6 +477,22 @@ $lblFiles           = New-Object System.Windows.Forms.Label
 $lblFiles.Text      = 'Файлы для загрузки:'
 $lblFiles.Location  = New-Object System.Drawing.Point(12, 178)
 $lblFiles.AutoSize  = $true
+
+$toolTip = New-Object System.Windows.Forms.ToolTip
+
+$chkSelectAll          = New-Object System.Windows.Forms.CheckBox
+$chkSelectAll.Text     = ''
+$chkSelectAll.Location = New-Object System.Drawing.Point(600, 176)
+$chkSelectAll.Size     = New-Object System.Drawing.Size(20, 20)
+$chkSelectAll.Checked  = $true
+$toolTip.SetToolTip($chkSelectAll, 'Выделить все')
+
+$chkDeselectAll          = New-Object System.Windows.Forms.CheckBox
+$chkDeselectAll.Text     = ''
+$chkDeselectAll.Location = New-Object System.Drawing.Point(628, 176)
+$chkDeselectAll.Size     = New-Object System.Drawing.Size(20, 20)
+$chkDeselectAll.Checked  = $false
+$toolTip.SetToolTip($chkDeselectAll, 'Снять выделение')
 
 $checkedList                    = New-Object System.Windows.Forms.CheckedListBox
 $checkedList.Location           = New-Object System.Drawing.Point(12, 198)
@@ -490,9 +542,9 @@ $btnLoad.FlatAppearance.BorderSize = 0
 
 $form.Controls.AddRange(@(
     $lblPath, $txtPath, $btnBrowse,
-    $lblBase, $cmbBase,
+    $lblBase, $cmbBase, $btnRefreshBases,
     $btnRead, $lblFound,
-    $lblFiles, $checkedList,
+    $lblFiles, $chkSelectAll, $chkDeselectAll, $checkedList,
     $chkOpenConf, $chkSkipDbUpdate,
     $sep, $lblStatus, $btnLoad
 ))
@@ -524,6 +576,7 @@ $loadTimer.add_Tick({
         # Разблокировать UI
         $btnRead.Enabled = $true
         $cmbBase.Enabled = $true
+        $btnRefreshBases.Enabled = $true
         $btnLoad.Enabled = ($checkedList.CheckedItems.Count -gt 0)
 
         if ($exitCode -eq 0) {
@@ -587,6 +640,11 @@ $btnBrowse.add_Click({
         $lblStatus.ForeColor = [System.Drawing.Color]::Gray
         $lblStatus.Text     = 'Папка выбрана. Нажмите "Прочитать изменения".'
     }
+})
+
+# ── «Обновить» список баз ────────────────────────────────────────────────────
+$btnRefreshBases.add_Click({
+    Update-BasesComboBox
 })
 
 # ── «Прочитать изменения» ────────────────────────────────────────────────────
@@ -653,6 +711,24 @@ $btnRead.add_Click({
     $btnLoad.Enabled    = $true
     $lblStatus.ForeColor = [System.Drawing.Color]::Gray
     $lblStatus.Text     = 'Снимите галочки с ненужных файлов и нажмите "Загрузить".'
+})
+
+# ── Выделить все / снять выделение ───────────────────────────────────────────
+# Визуально: «выделить» всегда с галочкой, «снять» — пустой; клик только действие
+$chkSelectAll.add_Click({
+    for ($i = 0; $i -lt $checkedList.Items.Count; $i++) {
+        $checkedList.SetItemChecked($i, $true)
+    }
+    $chkSelectAll.Checked   = $true
+    $chkDeselectAll.Checked = $false
+})
+
+$chkDeselectAll.add_Click({
+    for ($i = 0; $i -lt $checkedList.Items.Count; $i++) {
+        $checkedList.SetItemChecked($i, $false)
+    }
+    $chkSelectAll.Checked   = $true
+    $chkDeselectAll.Checked = $false
 })
 
 # ── Изменение чекбокса — обновить счётчик на кнопке ─────────────────────────
@@ -724,6 +800,7 @@ $btnLoad.add_Click({
     $btnLoad.Enabled  = $false
     $btnRead.Enabled  = $false
     $cmbBase.Enabled  = $false
+    $btnRefreshBases.Enabled = $false
     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 102, 204)
     if ($platform.Warning) {
         $lblStatus.Text = "Платформа: $($platform.MatchedVersion). $($platform.Warning)"
@@ -745,6 +822,7 @@ $btnLoad.add_Click({
         $btnLoad.Enabled  = $true
         $btnRead.Enabled  = $true
         $cmbBase.Enabled  = $true
+        $btnRefreshBases.Enabled = $true
         return
     }
 
@@ -769,6 +847,7 @@ $btnLoad.add_Click({
         $btnLoad.Enabled  = $true
         $btnRead.Enabled  = $true
         $cmbBase.Enabled  = $true
+        $btnRefreshBases.Enabled = $true
     }
 })
 
@@ -776,23 +855,7 @@ $btnLoad.add_Click({
 # Инициализация
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Заполнить ComboBox из ibases.v8i
-$allBases = Get-IBasesList
-if ($allBases -and $allBases.Count -gt 0) {
-    $script:bases = $allBases
-    foreach ($b in $allBases) {
-        $label = if ($b.IsServer) {
-            "$($b.Name)   [$($b.Server) / $($b.Ref)]"
-        } else {
-            "$($b.Name)   [$($b.FilePath)]"
-        }
-        $cmbBase.Items.Add($label) | Out-Null
-    }
-    $cmbBase.SelectedIndex = 0
-} else {
-    $cmbBase.Items.Add('Базы не найдены — запустите 1С:Предприятие и добавьте базы') | Out-Null
-    $cmbBase.Enabled = $false
-}
+Update-BasesComboBox
 
 # Очистка при закрытии формы
 $form.add_FormClosing({
