@@ -91,6 +91,31 @@ public static class ModernFolderPicker {
 }
 '@
 
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class NativeTheme {
+    [DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+    static extern int SetWindowTheme(IntPtr hwnd, string pszSubAppName, string pszSubIdList);
+
+    public static void Apply(IntPtr hwnd, bool dark) {
+        if (hwnd == IntPtr.Zero) return;
+        int flag = dark ? 1 : 0;
+        DwmSetWindowAttribute(hwnd, 20, ref flag, 4);
+        SetWindowTheme(hwnd, dark ? "DarkMode_Explorer" : null, null);
+    }
+
+    public static void SetTheme(IntPtr hwnd, string subAppName) {
+        if (hwnd == IntPtr.Zero) return;
+        SetWindowTheme(hwnd, subAppName, null);
+    }
+}
+'@
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Функции логики (перенесены из Deploy-1C-Changes.ps1)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -412,6 +437,247 @@ $script:loadProc      = $null
 $script:loadTicks     = 0
 $script:loadingBase   = $null
 $script:loadingOnecExe = $null
+$script:uiTheme       = 'Light'
+$script:labelTone     = @{
+    lblFound  = 'Muted'
+    lblStatus = 'Muted'
+}
+
+function Get-UiThemeFilePath {
+    return (Join-Path $env:LOCALAPPDATA '1c-loader\ui-theme.txt')
+}
+
+function Read-SavedUiTheme {
+    try {
+        $path = Get-UiThemeFilePath
+        if (-not (Test-Path -LiteralPath $path)) { return 'Light' }
+        $value = (Get-Content -LiteralPath $path -Raw -ErrorAction Stop).Trim()
+        if ($value -eq 'Dark') { return 'Dark' }
+    } catch {}
+    return 'Light'
+}
+
+function Save-UiTheme {
+    param([ValidateSet('Light', 'Dark')][string]$Name)
+    try {
+        $path = Get-UiThemeFilePath
+        $dir  = Split-Path -Parent $path
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        Set-Content -LiteralPath $path -Value $Name -Encoding ascii -NoNewline
+    } catch {}
+}
+
+function Get-UiOptionsFilePath {
+    return (Join-Path $env:LOCALAPPDATA '1c-loader\ui-options.txt')
+}
+
+function Read-SavedUiOptions {
+    $options = @{ OpenConf = $false; SkipDbUpdate = $false }
+    try {
+        $path = Get-UiOptionsFilePath
+        if (-not (Test-Path -LiteralPath $path)) { return $options }
+        foreach ($line in @(Get-Content -LiteralPath $path -ErrorAction Stop)) {
+            if ($line -match '^OpenConf=([01])$') { $options.OpenConf = ($Matches[1] -eq '1') }
+            elseif ($line -match '^SkipDbUpdate=([01])$') { $options.SkipDbUpdate = ($Matches[1] -eq '1') }
+        }
+    } catch {}
+    return $options
+}
+
+function Save-UiOptions {
+    try {
+        $path = Get-UiOptionsFilePath
+        $dir  = Split-Path -Parent $path
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        $open = if ($chkOpenConf.Checked) { '1' } else { '0' }
+        $skip = if ($chkSkipDbUpdate.Checked) { '1' } else { '0' }
+        Set-Content -LiteralPath $path -Encoding ascii -Value @("OpenConf=$open", "SkipDbUpdate=$skip")
+    } catch {}
+}
+
+function Get-UiPalette {
+    param([ValidateSet('Light', 'Dark')][string]$Name)
+    if ($Name -eq 'Dark') {
+        return @{
+            FormBack             = [System.Drawing.Color]::FromArgb(30, 30, 30)
+            Fore                 = [System.Drawing.Color]::FromArgb(220, 220, 220)
+            InputBack            = [System.Drawing.Color]::FromArgb(37, 37, 38)
+            Separator            = [System.Drawing.Color]::FromArgb(60, 60, 60)
+            Accent               = [System.Drawing.Color]::FromArgb(0, 120, 215)
+            AccentFore           = [System.Drawing.Color]::White
+            ButtonBack           = [System.Drawing.Color]::FromArgb(62, 62, 66)
+            ButtonFore           = [System.Drawing.Color]::FromArgb(220, 220, 220)
+            ButtonBorder         = [System.Drawing.Color]::FromArgb(90, 90, 90)
+            ButtonHover          = [System.Drawing.Color]::FromArgb(80, 80, 84)
+            ButtonBackDisabled   = [System.Drawing.Color]::FromArgb(45, 45, 48)
+            ButtonForeDisabled   = [System.Drawing.Color]::FromArgb(110, 110, 110)
+            ButtonBorderDisabled = [System.Drawing.Color]::FromArgb(60, 60, 60)
+            Muted                = [System.Drawing.Color]::FromArgb(160, 160, 160)
+            Success              = [System.Drawing.Color]::FromArgb(106, 190, 120)
+            Error                = [System.Drawing.Color]::FromArgb(244, 135, 113)
+            Progress             = [System.Drawing.Color]::FromArgb(86, 156, 214)
+        }
+    }
+    return @{
+        FormBack   = [System.Drawing.Color]::White
+        Fore       = [System.Drawing.SystemColors]::ControlText
+        InputBack  = [System.Drawing.Color]::White
+        Separator  = [System.Drawing.Color]::FromArgb(220, 220, 220)
+        Accent     = [System.Drawing.Color]::FromArgb(0, 120, 215)
+        AccentFore = [System.Drawing.Color]::White
+        Muted      = [System.Drawing.Color]::Gray
+        Success    = [System.Drawing.Color]::FromArgb(0, 128, 0)
+        Error      = [System.Drawing.Color]::Red
+        Progress   = [System.Drawing.Color]::FromArgb(0, 102, 204)
+    }
+}
+
+function Set-LabelTone {
+    param(
+        [Parameter(Mandatory)][System.Windows.Forms.Label]$Label,
+        [Parameter(Mandatory)][ValidateSet('Muted', 'Success', 'Error', 'Progress')][string]$Tone
+    )
+    $script:labelTone[$Label.Name] = $Tone
+    $Label.ForeColor = (Get-UiPalette -Name $script:uiTheme)[$Tone]
+}
+
+function Update-SecondaryButton {
+    param(
+        $Button,
+        $Palette,
+        [bool]$Dark
+    )
+    if (-not $Dark) {
+        $Button.UseVisualStyleBackColor = $true
+        $Button.FlatStyle = 'System'
+        $Button.ForeColor = [System.Drawing.SystemColors]::ControlText
+        $Button.BackColor = [System.Drawing.SystemColors]::Control
+        return
+    }
+
+    $Button.FlatStyle = 'Flat'
+    $Button.UseVisualStyleBackColor = $false
+    $Button.FlatAppearance.BorderSize = 1
+    if ($Button.Enabled) {
+        $Button.BackColor = $Palette.ButtonBack
+        $Button.ForeColor = $Palette.ButtonFore
+        $Button.FlatAppearance.BorderColor = $Palette.ButtonBorder
+        $Button.FlatAppearance.MouseOverBackColor = $Palette.ButtonHover
+        $Button.FlatAppearance.MouseDownBackColor = $Palette.ButtonHover
+    } else {
+        $Button.BackColor = $Palette.ButtonBackDisabled
+        $Button.ForeColor = $Palette.ButtonForeDisabled
+        $Button.FlatAppearance.BorderColor = $Palette.ButtonBorderDisabled
+    }
+}
+
+function Update-LoadButton {
+    param($Palette, [bool]$Dark)
+    if ($Dark) {
+        Update-SecondaryButton -Button $btnLoad -Palette $Palette -Dark $true
+        return
+    }
+    $btnLoad.FlatStyle = 'Flat'
+    $btnLoad.UseVisualStyleBackColor = $false
+    $btnLoad.BackColor = $Palette.Accent
+    $btnLoad.ForeColor = $Palette.AccentFore
+    $btnLoad.FlatAppearance.BorderSize = 0
+    $btnLoad.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Empty
+    $btnLoad.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Empty
+}
+
+function Update-SecondaryButtonsForEnabledState {
+    if ($script:uiTheme -ne 'Dark') { return }
+    $palette = Get-UiPalette -Name 'Dark'
+    foreach ($btn in @($btnBrowse, $btnRefreshBases, $btnRead)) {
+        Update-SecondaryButton -Button $btn -Palette $palette -Dark $true
+    }
+    Update-LoadButton -Palette $palette -Dark $true
+}
+
+function Update-NativeUiTheme {
+    $dark = ($script:uiTheme -eq 'Dark')
+    try { [NativeTheme]::Apply($form.Handle, $dark) } catch {}
+    try {
+        if ($form.Visible -and $checkedList.IsHandleCreated) {
+            $flags = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+            $method = $checkedList.GetType().GetMethod('RecreateHandle', $flags)
+            if ($method) { [void]$method.Invoke($checkedList, $null) }
+        }
+        [NativeTheme]::Apply($checkedList.Handle, $dark)
+    } catch {}
+    try {
+        if ($null -ne $settingsForm -and $settingsForm.IsHandleCreated) {
+            [NativeTheme]::Apply($settingsForm.Handle, $dark)
+        }
+    } catch {}
+}
+
+function Set-UiTheme {
+    param([ValidateSet('Light', 'Dark')][string]$Name)
+    $script:uiTheme = $Name
+    $palette = Get-UiPalette -Name $Name
+    $isDark  = ($Name -eq 'Dark')
+
+    $form.BackColor = $palette.FormBack
+    $form.ForeColor = $palette.Fore
+
+    $txtPath.BackColor   = $palette.InputBack
+    $txtPath.ForeColor   = $palette.Fore
+    $txtPath.BorderStyle = if ($isDark) { 'FixedSingle' } else { 'Fixed3D' }
+
+    $comboStyle = if ($isDark) { [System.Windows.Forms.FlatStyle]::Standard } else { [System.Windows.Forms.FlatStyle]::System }
+    if ($cmbBase.FlatStyle -ne $comboStyle) { $cmbBase.FlatStyle = $comboStyle }
+    $cmbBase.BackColor = $palette.InputBack
+    $cmbBase.ForeColor = $palette.Fore
+    try { [NativeTheme]::SetTheme($cmbBase.Handle, $(if ($isDark) { 'DarkMode_CFD' } else { $null })) } catch {}
+    $cmbBase.Invalidate()
+
+    $checkedList.BackColor = $palette.InputBack
+    $checkedList.ForeColor = $palette.Fore
+
+    $sep.BackColor = $palette.Separator
+
+    Update-LoadButton -Palette $palette -Dark $isDark
+
+    foreach ($btn in @($btnBrowse, $btnRefreshBases, $btnRead, $btnTheme)) {
+        Update-SecondaryButton -Button $btn -Palette $palette -Dark $isDark
+    }
+    if ($null -ne $btnTheme) {
+        $btnTheme.Text = if ($isDark) { 'Светлая тема' } else { 'Тёмная тема' }
+    }
+    if ($null -ne $settingsForm) {
+        $settingsForm.BackColor = $palette.FormBack
+        $settingsForm.ForeColor = $palette.Fore
+    }
+
+    foreach ($chk in @($chkSelectAll, $chkDeselectAll, $chkOpenConf, $chkSkipDbUpdate)) {
+        $chk.UseVisualStyleBackColor = -not $isDark
+        $chk.BackColor = $palette.FormBack
+        $chk.ForeColor = $palette.Fore
+        if ($isDark) {
+            $chk.FlatStyle = 'Flat'
+            $chk.FlatAppearance.BorderColor = $palette.ButtonBorder
+            $chk.FlatAppearance.CheckedBackColor = $palette.ButtonBack
+            $chk.FlatAppearance.MouseOverBackColor = $palette.ButtonHover
+            $chk.FlatAppearance.MouseDownBackColor = $palette.ButtonHover
+        } else {
+            $chk.FlatStyle = 'Standard'
+        }
+    }
+
+    foreach ($key in @($script:labelTone.Keys)) {
+        $label = $form.Controls.Find($key, $false) | Select-Object -First 1
+        if ($null -ne $label) { $label.ForeColor = $palette[$script:labelTone[$key]] }
+    }
+
+    Update-NativeUiTheme
+    if ($form.IsHandleCreated) { $form.Refresh() }
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Форма
@@ -426,10 +692,16 @@ $form.Font             = New-Object System.Drawing.Font('Segoe UI', 9)
 $form.BackColor        = [System.Drawing.Color]::White
 
 # ── Папка проекта ─────────────────────────────────────────────────────────────
+$lblSettings            = New-Object System.Windows.Forms.Label
+$lblSettings.Text       = 'Настройки'
+$lblSettings.AutoSize   = $true
+$lblSettings.Cursor     = [System.Windows.Forms.Cursors]::Hand
+$lblSettings.Location   = New-Object System.Drawing.Point(12, 8)
+
 $lblPath           = New-Object System.Windows.Forms.Label
 $lblPath.Text      = 'Папка проекта:'
-$lblPath.Location  = New-Object System.Drawing.Point(12, 14)
 $lblPath.AutoSize  = $true
+$lblPath.Location  = New-Object System.Drawing.Point(12, 14)
 
 $txtPath           = New-Object System.Windows.Forms.TextBox
 $txtPath.Location  = New-Object System.Drawing.Point(12, 34)
@@ -452,6 +724,30 @@ $cmbBase.Location       = New-Object System.Drawing.Point(12, 94)
 $cmbBase.Size           = New-Object System.Drawing.Size(518, 26)
 $cmbBase.DropDownStyle  = 'DropDownList'
 $cmbBase.FlatStyle      = 'System'
+$cmbBase.DrawMode       = 'OwnerDrawFixed'
+$cmbBase.ItemHeight     = 18
+$cmbBase.add_DrawItem({
+    $e = $_
+    $palette = Get-UiPalette -Name $script:uiTheme
+    $isEdit = ($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -eq [System.Windows.Forms.DrawItemState]::ComboBoxEdit
+    $isSelected = (-not $isEdit) -and (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected)
+    $back = if ($isSelected) { $palette.Accent } else { $palette.InputBack }
+    $fore = if ($isSelected) { $palette.AccentFore } else { $palette.Fore }
+    $backBrush = New-Object System.Drawing.SolidBrush $back
+    try {
+        $e.Graphics.FillRectangle($backBrush, $e.Bounds)
+        if ($e.Index -ge 0 -and $e.Index -lt $cmbBase.Items.Count) {
+            $textRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 2), $e.Bounds.Y, [Math]::Max(0, $e.Bounds.Width - 4), $e.Bounds.Height)
+            $flags = [System.Windows.Forms.TextFormatFlags]::Left -bor `
+                     [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor `
+                     [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor `
+                     [System.Windows.Forms.TextFormatFlags]::NoPrefix
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$cmbBase.Items[$e.Index], $e.Font, $textRect, $fore, $flags)
+        }
+    } finally {
+        $backBrush.Dispose()
+    }
+})
 
 $btnRefreshBases          = New-Object System.Windows.Forms.Button
 $btnRefreshBases.Text     = 'Обновить'
@@ -470,7 +766,7 @@ $lblFound           = New-Object System.Windows.Forms.Label
 $lblFound.Text      = 'Изменений не найдено'
 $lblFound.Location  = New-Object System.Drawing.Point(214, 141)
 $lblFound.Size      = New-Object System.Drawing.Size(434, 20)
-$lblFound.ForeColor = [System.Drawing.Color]::Gray
+$lblFound.Name      = 'lblFound'
 
 # ── Список файлов с чекбоксами ────────────────────────────────────────────────
 $lblFiles           = New-Object System.Windows.Forms.Label
@@ -496,25 +792,49 @@ $toolTip.SetToolTip($chkDeselectAll, 'Снять выделение')
 
 $checkedList                    = New-Object System.Windows.Forms.CheckedListBox
 $checkedList.Location           = New-Object System.Drawing.Point(12, 198)
-$checkedList.Size               = New-Object System.Drawing.Size(636, 172)
+$checkedList.Size               = New-Object System.Drawing.Size(636, 220)
 $checkedList.CheckOnClick       = $true
 $checkedList.HorizontalScrollbar = $true
 $checkedList.IntegralHeight     = $false
 $checkedList.BorderStyle        = 'FixedSingle'
 
-# ── Чекбокс «Открыть конфигуратор» ───────────────────────────────────────────
+# ── Окно настроек ─────────────────────────────────────────────────────────────
+$settingsForm                  = New-Object System.Windows.Forms.Form
+$settingsForm.Text             = 'Настройки'
+$settingsForm.ClientSize       = New-Object System.Drawing.Size(460, 140)
+$settingsForm.FormBorderStyle  = 'FixedDialog'
+$settingsForm.MaximizeBox      = $false
+$settingsForm.MinimizeBox      = $false
+$settingsForm.ShowInTaskbar    = $false
+$settingsForm.StartPosition    = 'CenterParent'
+$settingsForm.Font             = $form.Font
+$settingsForm.add_HandleCreated({
+    try { [NativeTheme]::Apply($settingsForm.Handle, ($script:uiTheme -eq 'Dark')) } catch {}
+})
+
 $chkOpenConf          = New-Object System.Windows.Forms.CheckBox
 $chkOpenConf.Text     = 'Открыть конфигуратор после успешной загрузки'
-$chkOpenConf.Location = New-Object System.Drawing.Point(12, 378)
-$chkOpenConf.Size     = New-Object System.Drawing.Size(420, 20)
+$chkOpenConf.Location = New-Object System.Drawing.Point(16, 16)
+$chkOpenConf.Size     = New-Object System.Drawing.Size(428, 22)
 $chkOpenConf.Checked  = $false
 
-# ── Чекбокс «Не обновлять конфигурацию БД» ────────────────────────────────────
 $chkSkipDbUpdate          = New-Object System.Windows.Forms.CheckBox
 $chkSkipDbUpdate.Text     = 'Не обновлять конфигурацию базы данных'
-$chkSkipDbUpdate.Location = New-Object System.Drawing.Point(12, 400)
-$chkSkipDbUpdate.Size     = New-Object System.Drawing.Size(500, 20)
+$chkSkipDbUpdate.Location = New-Object System.Drawing.Point(16, 46)
+$chkSkipDbUpdate.Size     = New-Object System.Drawing.Size(428, 22)
 $chkSkipDbUpdate.Checked  = $false
+
+$btnTheme           = New-Object System.Windows.Forms.Button
+$btnTheme.Text      = 'Тёмная тема'
+$btnTheme.Location  = New-Object System.Drawing.Point(16, 88)
+$btnTheme.Size      = New-Object System.Drawing.Size(160, 32)
+$btnTheme.FlatStyle = 'System'
+
+$savedOptions = Read-SavedUiOptions
+$chkOpenConf.Checked = [bool]$savedOptions.OpenConf
+$chkSkipDbUpdate.Checked = [bool]$savedOptions.SkipDbUpdate
+
+$settingsForm.Controls.AddRange(@($chkOpenConf, $chkSkipDbUpdate, $btnTheme))
 
 # ── Разделитель ───────────────────────────────────────────────────────────────
 $sep            = New-Object System.Windows.Forms.Panel
@@ -527,7 +847,7 @@ $lblStatus           = New-Object System.Windows.Forms.Label
 $lblStatus.Text      = 'Выберите папку и базу, затем нажмите "Прочитать изменения"'
 $lblStatus.Location  = New-Object System.Drawing.Point(12, 438)
 $lblStatus.Size      = New-Object System.Drawing.Size(400, 36)
-$lblStatus.ForeColor = [System.Drawing.Color]::Gray
+$lblStatus.Name      = 'lblStatus'
 
 $btnLoad             = New-Object System.Windows.Forms.Button
 $btnLoad.Text        = 'Загрузить выбранные'
@@ -541,13 +861,18 @@ $btnLoad.ForeColor   = [System.Drawing.Color]::White
 $btnLoad.FlatAppearance.BorderSize = 0
 
 $form.Controls.AddRange(@(
-    $lblPath, $txtPath, $btnBrowse,
+    $lblPath, $lblSettings, $txtPath, $btnBrowse,
     $lblBase, $cmbBase, $btnRefreshBases,
     $btnRead, $lblFound,
     $lblFiles, $chkSelectAll, $chkDeselectAll, $checkedList,
-    $chkOpenConf, $chkSkipDbUpdate,
     $sep, $lblStatus, $btnLoad
 ))
+
+$settingsRowHeight = 22
+foreach ($ctrl in @($form.Controls)) {
+    if ($ctrl -ne $lblSettings) { $ctrl.Top += $settingsRowHeight }
+}
+$form.ClientSize = New-Object System.Drawing.Size($form.ClientSize.Width, ($form.ClientSize.Height + $settingsRowHeight))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Таймер — опрос процесса загрузки (не блокирует UI)
@@ -580,7 +905,7 @@ $loadTimer.add_Tick({
         $btnLoad.Enabled = ($checkedList.CheckedItems.Count -gt 0)
 
         if ($exitCode -eq 0) {
-            $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 128, 0)
+            Set-LabelTone -Label $lblStatus -Tone Success
             $lblStatus.Text      = 'Загрузка завершена успешно!'
             [System.Windows.Forms.MessageBox]::Show(
                 'Загрузка завершена успешно!',
@@ -595,7 +920,7 @@ $loadTimer.add_Tick({
             }
             $script:loadingBase = $null
         } else {
-            $lblStatus.ForeColor = [System.Drawing.Color]::Red
+            Set-LabelTone -Label $lblStatus -Tone Error
             $lblStatus.Text      = "Ошибка загрузки (код: $exitCode)."
             [System.Windows.Forms.MessageBox]::Show(
                 "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode`n`nДиагностика: $env:TEMP\1c-loader-last-cmd.txt",
@@ -610,9 +935,28 @@ $loadTimer.add_Tick({
     }
 })
 
+$btnBrowse.add_EnabledChanged({ Update-SecondaryButtonsForEnabledState })
+$btnRefreshBases.add_EnabledChanged({ Update-SecondaryButtonsForEnabledState })
+$btnRead.add_EnabledChanged({ Update-SecondaryButtonsForEnabledState })
+$btnLoad.add_EnabledChanged({ Update-SecondaryButtonsForEnabledState })
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Обработчики событий
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ── Настройки ────────────────────────────────────────────────────────────────
+$lblSettings.add_Click({
+    $settingsForm.ShowDialog($form) | Out-Null
+})
+
+$chkOpenConf.add_CheckedChanged({ Save-UiOptions })
+$chkSkipDbUpdate.add_CheckedChanged({ Save-UiOptions })
+
+$btnTheme.add_Click({
+    $next = if ($script:uiTheme -eq 'Dark') { 'Light' } else { 'Dark' }
+    Set-UiTheme -Name $next
+    Save-UiTheme -Name $next
+})
 
 # ── «Обзор» ──────────────────────────────────────────────────────────────────
 $btnBrowse.add_Click({
@@ -635,9 +979,9 @@ $btnBrowse.add_Click({
         # Сбросить результаты предыдущего чтения
         $checkedList.Items.Clear()
         $lblFound.Text      = 'Изменений не найдено'
-        $lblFound.ForeColor = [System.Drawing.Color]::Gray
+        Set-LabelTone -Label $lblFound -Tone Muted
         $btnLoad.Enabled    = $false
-        $lblStatus.ForeColor = [System.Drawing.Color]::Gray
+        Set-LabelTone -Label $lblStatus -Tone Muted
         $lblStatus.Text     = 'Папка выбрана. Нажмите "Прочитать изменения".'
     }
 })
@@ -654,8 +998,8 @@ $btnRead.add_Click({
     # Сброс
     $checkedList.Items.Clear()
     $btnLoad.Enabled    = $false
-    $lblFound.ForeColor = [System.Drawing.Color]::Gray
-    $lblStatus.ForeColor = [System.Drawing.Color]::Gray
+    Set-LabelTone -Label $lblFound -Tone Muted
+    Set-LabelTone -Label $lblStatus -Tone Muted
 
     # Валидация
     if (-not $folderPath) {
@@ -706,10 +1050,10 @@ $btnRead.add_Click({
     }
 
     $lblFound.Text      = "Найдено: $($files.Count) файлов"
-    $lblFound.ForeColor = [System.Drawing.Color]::FromArgb(0, 128, 0)
+    Set-LabelTone -Label $lblFound -Tone Success
     $btnLoad.Text       = "Загрузить выбранные ($($files.Count))"
     $btnLoad.Enabled    = $true
-    $lblStatus.ForeColor = [System.Drawing.Color]::Gray
+    Set-LabelTone -Label $lblStatus -Tone Muted
     $lblStatus.Text     = 'Снимите галочки с ненужных файлов и нажмите "Загрузить".'
 })
 
@@ -801,7 +1145,7 @@ $btnLoad.add_Click({
     $btnRead.Enabled  = $false
     $cmbBase.Enabled  = $false
     $btnRefreshBases.Enabled = $false
-    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 102, 204)
+    Set-LabelTone -Label $lblStatus -Tone Progress
     if ($platform.Warning) {
         $lblStatus.Text = "Платформа: $($platform.MatchedVersion). $($platform.Warning)"
     } elseif ($requiredVer) {
@@ -817,7 +1161,7 @@ $btnLoad.add_Click({
             -Database    $selectedBase `
             -OnecExePath $onecExe
     } catch {
-        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        Set-LabelTone -Label $lblStatus -Tone Error
         $lblStatus.Text   = "Ошибка создания .1c-devbase.bat: $_"
         $btnLoad.Enabled  = $true
         $btnRead.Enabled  = $true
@@ -842,7 +1186,7 @@ $btnLoad.add_Click({
             Restore-DevBase -State $script:devbaseState
             $script:devbaseState = $null
         }
-        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        Set-LabelTone -Label $lblStatus -Tone Error
         $lblStatus.Text   = "Ошибка запуска загрузки: $_"
         $btnLoad.Enabled  = $true
         $btnRead.Enabled  = $true
@@ -868,4 +1212,5 @@ $form.add_FormClosing({
 # ─────────────────────────────────────────────────────────────────────────────
 # Запуск
 # ─────────────────────────────────────────────────────────────────────────────
+Set-UiTheme -Name (Read-SavedUiTheme)
 [System.Windows.Forms.Application]::Run($form)
