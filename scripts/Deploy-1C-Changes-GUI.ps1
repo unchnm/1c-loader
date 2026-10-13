@@ -679,6 +679,90 @@ function Set-UiTheme {
     if ($form.IsHandleCreated) { $form.Refresh() }
 }
 
+function Show-AppMessage {
+    param(
+        [string]$Text,
+        [string]$Caption = '1С Загрузчик',
+        [ValidateSet('Information', 'Warning', 'Error')]
+        [string]$Icon = 'Information'
+    )
+    if ($script:uiTheme -ne 'Dark') {
+        [System.Windows.Forms.MessageBox]::Show(
+            $Text,
+            $Caption,
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::$Icon
+        ) | Out-Null
+        return
+    }
+
+    $palette = Get-UiPalette -Name 'Dark'
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = $Caption
+    $dlg.FormBorderStyle = 'FixedDialog'
+    $dlg.MaximizeBox = $false
+    $dlg.MinimizeBox = $false
+    $dlg.ShowInTaskbar = $false
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $dlg.BackColor = $palette.FormBack
+    $dlg.ForeColor = $palette.Fore
+    $dlg.add_HandleCreated({
+        try { [NativeTheme]::Apply($dlg.Handle, $true) } catch {}
+    })
+
+    $pic = New-Object System.Windows.Forms.PictureBox
+    $pic.Location = New-Object System.Drawing.Point(16, 18)
+    $pic.Size = New-Object System.Drawing.Size(32, 32)
+    $pic.SizeMode = 'CenterImage'
+    $pic.BackColor = $palette.FormBack
+    $sysIcon = switch ($Icon) {
+        'Error'   { [System.Drawing.SystemIcons]::Error }
+        'Warning' { [System.Drawing.SystemIcons]::Warning }
+        default   { [System.Drawing.SystemIcons]::Information }
+    }
+    $pic.Image = $sysIcon.ToBitmap()
+
+    $textWidth = 340
+    $flags = [System.Windows.Forms.TextFormatFlags]::WordBreak -bor [System.Windows.Forms.TextFormatFlags]::TextBoxControl
+    $measured = [System.Windows.Forms.TextRenderer]::MeasureText($Text, $dlg.Font, (New-Object System.Drawing.Size($textWidth, 0)), $flags)
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $Text
+    $lbl.Location = New-Object System.Drawing.Point(60, 16)
+    $lbl.Size = New-Object System.Drawing.Size($textWidth, [Math]::Max(36, $measured.Height))
+    $lbl.BackColor = $palette.FormBack
+    $lbl.ForeColor = $palette.Fore
+
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Text = 'ОК'
+    $btn.Size = New-Object System.Drawing.Size(88, 28)
+    $btn.FlatStyle = 'Flat'
+    $btn.UseVisualStyleBackColor = $false
+    $btn.BackColor = $palette.ButtonBack
+    $btn.ForeColor = $palette.ButtonFore
+    $btn.FlatAppearance.BorderSize = 1
+    $btn.FlatAppearance.BorderColor = $palette.ButtonBorder
+    $btn.FlatAppearance.MouseOverBackColor = $palette.ButtonHover
+    $btn.FlatAppearance.MouseDownBackColor = $palette.ButtonHover
+    $btn.DialogResult = 'OK'
+    $contentBottom = [Math]::Max($pic.Bottom, $lbl.Bottom)
+    $btn.Location = New-Object System.Drawing.Point(312, ($contentBottom + 18))
+
+    $dlg.ClientSize = New-Object System.Drawing.Size(420, ($btn.Bottom + 16))
+    $dlg.AcceptButton = $btn
+    $dlg.CancelButton = $btn
+    $dlg.Controls.AddRange(@($pic, $lbl, $btn))
+
+    $owner = $form
+    if ($null -ne $settingsForm -and $settingsForm.Visible) { $owner = $settingsForm }
+    try {
+        [void]$dlg.ShowDialog($owner)
+    } finally {
+        if ($null -ne $pic.Image) { $pic.Image.Dispose() }
+        $dlg.Dispose()
+    }
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Форма
 # ─────────────────────────────────────────────────────────────────────────────
@@ -907,12 +991,7 @@ $loadTimer.add_Tick({
         if ($exitCode -eq 0) {
             Set-LabelTone -Label $lblStatus -Tone Success
             $lblStatus.Text      = 'Загрузка завершена успешно!'
-            [System.Windows.Forms.MessageBox]::Show(
-                'Загрузка завершена успешно!',
-                '1С Загрузчик',
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            ) | Out-Null
+            Show-AppMessage -Text 'Загрузка завершена успешно!' -Icon Information
 
             # Открыть конфигуратор если опция выбрана
             if ($chkOpenConf.Checked -and $null -ne $script:loadingBase -and $script:loadingOnecExe) {
@@ -922,12 +1001,7 @@ $loadTimer.add_Tick({
         } else {
             Set-LabelTone -Label $lblStatus -Tone Error
             $lblStatus.Text      = "Ошибка загрузки (код: $exitCode)."
-            [System.Windows.Forms.MessageBox]::Show(
-                "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode`n`nДиагностика: $env:TEMP\1c-loader-last-cmd.txt",
-                '1С Загрузчик',
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-AppMessage -Text "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode`n`nДиагностика: $env:TEMP\1c-loader-last-cmd.txt" -Icon Error
         }
     } else {
         $elapsed = $script:loadTicks
@@ -1095,7 +1169,7 @@ $checkedList.add_ItemCheck({
 # ── «Загрузить» ───────────────────────────────────────────────────────────────
 $btnLoad.add_Click({
     if ($cmbBase.SelectedIndex -lt 0 -or $script:bases.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show('Выберите базу 1С.', '1С Загрузчик', 'OK', 'Warning') | Out-Null
+        Show-AppMessage -Text 'Выберите базу 1С.' -Icon Warning
         return
     }
 
@@ -1105,7 +1179,7 @@ $btnLoad.add_Click({
     # Собрать отмеченные файлы
     $checkedFiles = @($checkedList.CheckedItems | ForEach-Object { "$_" })
     if ($checkedFiles.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show('Нет выбранных файлов.', '1С Загрузчик', 'OK', 'Warning') | Out-Null
+        Show-AppMessage -Text 'Нет выбранных файлов.' -Icon Warning
         return
     }
 
@@ -1119,10 +1193,7 @@ $btnLoad.add_Click({
     $requiredVer = Get-BasePlatformVersion -Base $selectedBase
     $platform    = Find-1CExecutable -RequiredVersion $requiredVer
     if (-not $platform.Path) {
-        [System.Windows.Forms.MessageBox]::Show(
-            '1cv8.exe не найден. Установите платформу 1С:Предприятие.',
-            '1С Загрузчик', 'OK', 'Error'
-        ) | Out-Null
+        Show-AppMessage -Text '1cv8.exe не найден. Установите платформу 1С:Предприятие.' -Icon Error
         return
     }
     $onecExe = $platform.Path
@@ -1133,10 +1204,7 @@ $btnLoad.add_Click({
     $confProc = Get-WmiObject Win32_Process -Filter "Name='1cv8.exe'" -ErrorAction SilentlyContinue |
                     Where-Object { $_.CommandLine -match 'DESIGNER' -and $_.CommandLine -match [regex]::Escape($baseRef) }
     if ($confProc) {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Конфигуратор базы `"$($selectedBase.Name)`" уже открыт.`n`nЗакройте конфигуратор и повторите загрузку.",
-            '1С Загрузчик', 'OK', 'Warning'
-        ) | Out-Null
+        Show-AppMessage -Text "Конфигуратор базы `"$($selectedBase.Name)`" уже открыт.`n`nЗакройте конфигуратор и повторите загрузку." -Icon Warning
         return
     }
 
