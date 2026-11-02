@@ -1,0 +1,72 @@
+{
+  "name": "onec-loader",
+  "displayName": "1C: Загрузка изменений",
+    "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С во вкладке редактора",
+    "version": "0.1.5",
+  "publisher": "unchnm",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "extensionKind": ["ui"],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onView:onecLoader.panel",
+    "onCommand:onecLoader.show"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "onec-loader",
+          "title": "1C: Загрузка",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "onec-loader": [
+        {
+          "type": "webview",
+          "id": "onecLoader.panel",
+          "name": "Загрузка изменений"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "onecLoader.show",
+        "title": "Открыть загрузку изменений",
+        "category": "1C"
+      }
+    ],
+    "configuration": {
+      "title": "1C: Загрузка изменений",
+      "properties": {
+        "onecLoader.updateDatabase": {
+          "type": "boolean",
+          "default": true,
+          "description": "Обновлять конфигурацию базы данных после загрузки"
+        },
+        "onecLoader.openConfigurator": {
+          "type": "boolean",
+          "default": false,
+          "description": "Открыть конфигуратор после успешной загрузки"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "tsc -p . && node --test out/logic.test.js",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.8.0"
+  }
+}

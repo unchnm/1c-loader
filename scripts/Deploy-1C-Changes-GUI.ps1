@@ -410,8 +410,24 @@ function Start-1CLoad {
     $batArgs  = "`"$XmlDir`""
     if ($fileList)     { $batArgs += " `"$fileList`"" }
     if ($SkipDbUpdate) { $batArgs += ' skipdbupdate' }
-    $cmdLine = "/c `"`"$skillScript`" $batArgs`""
-    return Start-Process 'cmd.exe' -ArgumentList $cmdLine -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -PassThru
+
+    $staleLog = Join-Path $WorkingDirectory '.1c-log.txt'
+    if (Test-Path -LiteralPath $staleLog) {
+        Remove-Item -LiteralPath $staleLog -Force -ErrorAction SilentlyContinue
+    }
+
+    # Start-Process в Windows PowerShell режет аргументы по пробелам, и bat не запускается.
+    # /s сохраняет кавычки, код возврата bat доходит до окна.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'cmd.exe'
+    $psi.Arguments = "/s /c `"`"$skillScript`" $batArgs`""
+    $psi.WorkingDirectory = $WorkingDirectory
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
+    return $proc
 }
 
 function Open-1CConfigurator {
@@ -422,7 +438,36 @@ function Open-1CConfigurator {
     } else {
         $connArg = "/F `"$($Database.FilePath)`""
     }
-    Start-Process $OnecExePath -ArgumentList "DESIGNER $connArg"
+    Start-Process $OnecExePath -ArgumentList "DESIGNER /AppAutoCheckVersion- $connArg"
+}
+
+function Get-1CVersionMismatch {
+    param([string]$LogPath)
+    if (-not $LogPath -or -not (Test-Path -LiteralPath $LogPath)) { return $null }
+    $text = [System.IO.File]::ReadAllText($LogPath)
+    $m = [regex]::Match($text, '\(\s*([0-9]+(?:\.[0-9]+){1,3})\s*-\s*([0-9]+(?:\.[0-9]+){1,3})\s*\)')
+    if (-not $m.Success) { return $null }
+    return [pscustomobject]@{
+        Client = $m.Groups[1].Value
+        Server = $m.Groups[2].Value
+        Text   = $text.Trim()
+    }
+}
+
+function Set-DevBaseExecutable {
+    param([string]$DevBasePath, [string]$OnecExePath)
+    $lines = [System.IO.File]::ReadAllLines($DevBasePath)
+    $updated = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^set\s+"ONEC_PATH=') {
+            $lines[$i] = "set `"ONEC_PATH=$OnecExePath`""
+            $updated = $true
+        }
+    }
+    if (-not $updated) {
+        $lines = @("set `"ONEC_PATH=$OnecExePath`"") + $lines
+    }
+    [System.IO.File]::WriteAllLines($DevBasePath, $lines, [System.Text.Encoding]::ASCII)
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -437,6 +482,10 @@ $script:loadProc      = $null
 $script:loadTicks     = 0
 $script:loadingBase   = $null
 $script:loadingOnecExe = $null
+$script:loadXmlDir    = $null
+$script:loadRelFiles  = @()
+$script:loadSkipDb    = $false
+$script:versionRetried = $false
 $script:uiTheme       = 'Light'
 $script:labelTone     = @{
     lblFound  = 'Muted'
@@ -976,6 +1025,37 @@ $loadTimer.add_Tick({
 
         $script:loadProc = $null
 
+        $logPath = if ($script:gitRoot) { Join-Path $script:gitRoot '.1c-log.txt' } else { $null }
+        $mismatch = Get-1CVersionMismatch -LogPath $logPath
+        if ($mismatch -and $exitCode -eq 0) { $exitCode = 1 }
+
+        # Клиент сам подменил версию или в ibases указана не та: повторить версией сервера
+        if ($mismatch -and -not $script:versionRetried -and $null -ne $script:devbaseState) {
+            $retryPlat = Find-1CExecutable -RequiredVersion $mismatch.Server
+            $sameExe = $retryPlat.Path -and ($retryPlat.Path -eq $script:loadingOnecExe)
+            if ($retryPlat.Path -and -not $retryPlat.UsedFallback -and -not $sameExe) {
+                $script:versionRetried = $true
+                Set-DevBaseExecutable -DevBasePath $script:devbaseState.DevBasePath -OnecExePath $retryPlat.Path
+                $script:loadingOnecExe = $retryPlat.Path
+                if ($logPath -and (Test-Path -LiteralPath $logPath)) {
+                    Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+                }
+                $script:loadTicks = 0
+                $script:loadProc = Start-1CLoad `
+                    -WorkingDirectory $script:gitRoot `
+                    -XmlDir           $script:loadXmlDir `
+                    -RelFiles         $script:loadRelFiles `
+                    -SkipDbUpdate:($script:loadSkipDb)
+                $lblStatus.Text = "Сервер $($mismatch.Server). Повтор клиентом $($retryPlat.MatchedVersion)..."
+                $loadTimer.Start()
+                return
+            }
+        }
+
+        if ($mismatch -and $logPath -and (Test-Path -LiteralPath $logPath)) {
+            Copy-Item -LiteralPath $logPath -Destination (Join-Path $env:TEMP '1c-loader-last-cmd.txt') -Force
+        }
+
         # Восстановить .1c-devbase.bat
         if ($null -ne $script:devbaseState) {
             Restore-DevBase -State $script:devbaseState
@@ -1001,7 +1081,11 @@ $loadTimer.add_Tick({
         } else {
             Set-LabelTone -Label $lblStatus -Tone Error
             $lblStatus.Text      = "Ошибка загрузки (код: $exitCode)."
-            Show-AppMessage -Text "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode`n`nДиагностика: $env:TEMP\1c-loader-last-cmd.txt" -Icon Error
+            $errText = "Загрузка завершилась с ошибкой.`nКод возврата: $exitCode"
+            if ($mismatch) {
+                $errText = "Несоответствие версий клиента и сервера 1С.`nКлиент: $($mismatch.Client)`nСервер: $($mismatch.Server)`n`nДля сервера нужна платформа $($mismatch.Server)."
+            }
+            Show-AppMessage -Text $errText -Icon Error
         }
     } else {
         $elapsed = $script:loadTicks
@@ -1198,6 +1282,10 @@ $btnLoad.add_Click({
     }
     $onecExe = $platform.Path
     $script:loadingOnecExe = $onecExe
+    $script:versionRetried = $false
+    $script:loadXmlDir = $script:xmlDir
+    $script:loadRelFiles = $relFiles
+    $script:loadSkipDb = [bool]$chkSkipDbUpdate.Checked
 
     # Проверить: не открыт ли конфигуратор для этой базы
     $baseRef  = if ($selectedBase.IsServer) { $selectedBase.Ref } else { $selectedBase.FilePath }
