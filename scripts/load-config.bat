@@ -84,7 +84,7 @@ if "%SKIP_UPDATE%"=="0" (
  echo Обновление БД: нет 
 ) 
  
-"%ONEC_PATH%" DESIGNER !IB_PARAMS! !AUTH_PARAMS! /DisableStartupDialogs /LoadConfigFromFiles "%XML_DIR%" %LOAD_PARAMS% -updateConfigDumpInfo !UPDATE_PARAMS! /Out ".1c-log.txt"
+"%ONEC_PATH%" DESIGNER /AppAutoCheckVersion- !IB_PARAMS! !AUTH_PARAMS! /DisableStartupDialogs /LoadConfigFromFiles "%XML_DIR%" %LOAD_PARAMS% -updateConfigDumpInfo !UPDATE_PARAMS! /Out ".1c-log.txt"
 
 set "RESULT=%ERRORLEVEL%"
 

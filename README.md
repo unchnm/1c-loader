@@ -171,6 +171,19 @@ scripts/
 
 ---
 
+## Расширение VS Code
+
+В каталоге `extension/` та же загрузка открывается кнопкой **1C: Загрузка** на панели действий. Форма появляется отдельной вкладкой редактора.
+
+```powershell
+cd extension
+npm install
+npm test
+npm run package
+```
+
+Файл `onec-loader-0.1.5.vsix` устанавливается в VS Code или Cursor командой **Extensions: Install from VSIX**.
+
 ## Лицензия
 
 MIT
