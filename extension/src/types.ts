@@ -38,6 +38,5 @@ export interface PanelState {
   statusText: string;
   statusTone: StatusTone;
   loading: boolean;
-  updateDatabase: boolean;
-  openConfigurator: boolean;
+  reading: boolean;
 }

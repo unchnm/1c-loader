@@ -11,12 +11,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (process.platform !== 'win32') {
         void vscode.window.showWarningMessage('Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.');
       }
-      await provider.openFormWindow();
-    }),
-    vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('onecLoader')) {
-        provider.notifyConfig();
-      }
+      await vscode.commands.executeCommand('onecLoader.panel.focus');
     })
   );
 }
