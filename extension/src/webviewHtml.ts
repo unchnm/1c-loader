@@ -25,8 +25,8 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   .codicon-search:before { content: "\\ea6d"; }
   .codicon-chevron-down:before { content: "\\eab4"; }
   .codicon-refresh:before { content: "\\eb37"; }
-  .codicon-check-all:before { content: "\\ebb1"; }
-  .codicon-clear-all:before { content: "\\eabf"; }
+  .codicon-check:before { content: "\\eab2"; }
+  .codicon-primitive-square:before { content: "\\ea72"; }
   html, body { height: 100%; margin: 0; }
   body {
     box-sizing: border-box;
@@ -180,8 +180,8 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
       <div class="toolbar">
         <div id="status" class="status"></div>
         <button id="read" class="icon-btn" type="button" title="Обновить изменения"><span id="read-icon" class="codicon codicon-refresh"></span></button>
-        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="codicon codicon-check-all"></span></button>
-        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="codicon codicon-clear-all"></span></button>
+        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="codicon codicon-check"></span></button>
+        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="codicon codicon-primitive-square"></span></button>
       </div>
       <div id="list" class="list"></div>
     </div>
