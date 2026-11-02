@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import test from 'node:test';
-import { filterChangedNames, findGitRoot, findXmlRoot, subPathOf, toLoadRelativePaths } from './changes';
+import { filterChangedNames, findGitRoot, findXmlRoot, pathsFromStatus, subPathOf, toLoadRelativePaths } from './changes';
 import { connectionToken, parseIbases, platformVersionOf } from './ibases';
 import { buildDesignerArgs } from './load';
 import { compareVersions, versionPrefixMatch } from './version';
@@ -57,6 +57,22 @@ test('git-список оставляет xml и bsl внутри корня к�
   ]);
 });
 
+test('git status: правки и новые файлы, без удалений', () => {
+  const names = pathsFromStatus([
+    ' M src/CommonModules/Модуль/Ext/Module.bsl',
+    'D  src/Catalogs/Старый/Ext/ObjectModule.bsl',
+    '?? src/Catalogs/Новый/Ext/ObjectModule.bsl',
+    'R  src/old.bsl -> src/new.bsl',
+    'MM README.md'
+  ]);
+  assert.deepStrictEqual(names, [
+    'src/CommonModules/Модуль/Ext/Module.bsl',
+    'src/Catalogs/Новый/Ext/ObjectModule.bsl',
+    'src/new.bsl',
+    'README.md'
+  ]);
+});
+
 test('корень Configuration.xml ищется в src', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-'));
   fs.mkdirSync(path.join(root, 'src'), { recursive: true });
@@ -81,12 +97,11 @@ test('аргументы дизайнера содержат listFile и не п
     },
     xmlDir: 'C:\\repo\\src',
     listFile: 'C:\\temp\\files.txt',
-    logFile: 'C:\\temp\\log.txt',
-    updateDatabase: true
+    logFile: 'C:\\temp\\log.txt'
   });
   assert.ok(args.includes('-listFile'));
   assert.ok(args.includes('C:\\temp\\files.txt'));
-  assert.ok(args.includes('/UpdateDBCfg'));
+  assert.ok(!args.includes('/UpdateDBCfg'));
   assert.ok(args.includes('/S'));
   assert.ok(args.includes('srv\\base'));
   assert.ok(!args.some(arg => arg.toLowerCase().includes('devbase')));

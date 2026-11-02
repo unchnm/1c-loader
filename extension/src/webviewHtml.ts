@@ -1,231 +1,221 @@
-export function launcherHtml(nonce: string): string {
+export function webviewHtml(nonce: string, fontUri: string, cspSource: string): string {
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
-<style>
-  body {
-    margin: 0;
-    padding: 12px;
-    color: var(--vscode-foreground);
-    font-family: var(--vscode-font-family);
-    font-size: var(--vscode-font-size);
-  }
-  p { margin: 0 0 12px; line-height: 1.4; }
-  button {
-    width: 100%;
-    padding: 8px;
-    cursor: pointer;
-    color: var(--vscode-button-foreground);
-    background: var(--vscode-button-background);
-    border: none;
-    font: inherit;
-    font-weight: 600;
-  }
-</style>
-</head>
-<body>
-  <p>Форма загрузки открывается отдельной вкладкой редактора.</p>
-  <button type="button" id="open">Открыть вкладку</button>
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    document.getElementById('open').addEventListener('click', () => vscode.postMessage({ type: 'openWindow' }));
-  </script>
-</body>
-</html>`;
-}
-
-export function webviewHtml(nonce: string): string {
-  return `<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src ${cspSource}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>1C: Загрузка изменённых файлов</title>
+<title>1C: Загрузка</title>
 <style>
-  :root { color-scheme: light dark; }
+  @font-face {
+    font-family: "codicon";
+    src: url("${fontUri}") format("truetype");
+  }
+  .codicon {
+    font-family: "codicon";
+    font-size: 16px;
+    line-height: 16px;
+    font-style: normal;
+    font-weight: normal;
+    letter-spacing: normal;
+    text-decoration: none;
+    text-transform: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  .codicon-search:before { content: "\\ea6d"; }
+  .codicon-chevron-down:before { content: "\\eab4"; }
+  .codicon-refresh:before { content: "\\eb37"; }
+  .codicon-check-all:before { content: "\\ebb1"; }
+  .codicon-clear-all:before { content: "\\eabf"; }
   html, body { height: 100%; margin: 0; }
   body {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    padding: 14px 16px;
+    gap: 10px;
+    padding: 8px 10px 10px;
     color: var(--vscode-foreground);
-    background: var(--vscode-editor-background);
+    background: var(--vscode-sideBar-background);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
   }
-  #form {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  h1 { font-size: 13px; font-weight: 600; margin: 0; }
   .unsupported {
     padding: 8px;
     border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
-    background: var(--vscode-inputValidation-warningBackground, transparent);
   }
-  label.field { display: block; margin-bottom: 4px; }
-  .row { display: flex; gap: 6px; }
+  label.field { display: block; margin: 0 0 4px; font-size: 12px; opacity: 0.9; }
+  .path-row { position: relative; }
   input[type="text"], select {
-    flex: 1;
-    min-width: 0;
     width: 100%;
     box-sizing: border-box;
     color: var(--vscode-input-foreground);
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border, transparent);
     padding: 4px 6px;
+    font: inherit;
   }
-  button, select { font-family: inherit; font-size: inherit; }
-  button {
-    color: var(--vscode-button-secondaryForeground);
-    background: var(--vscode-button-secondaryBackground);
-    border: 1px solid var(--vscode-button-border, transparent);
-    padding: 4px 8px;
-    cursor: pointer;
+  #path, #base { padding-right: 28px; }
+  select {
+    appearance: none;
+    -webkit-appearance: none;
   }
-  button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
-  button:disabled { opacity: 0.55; cursor: default; }
-  button.primary {
-    color: var(--vscode-button-foreground);
-    background: var(--vscode-button-background);
-    font-weight: 600;
-  }
-  button.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
-  button.tiny { padding: 0 6px; min-width: 26px; }
-  .settings { display: flex; flex-direction: column; gap: 4px; }
-  .settings label { display: flex; gap: 6px; align-items: flex-start; }
-  details.settings-box { margin: 0 0 22px; }
-  details.settings-box summary {
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 13px;
-  }
-  details.settings-box .settings { margin-top: 8px; }
-  .folder-block { margin-bottom: 20px; }
-  .base-block { margin-bottom: 22px; }
-  .read-row {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-  .select-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-  .found { font-size: 12px; }
-  .found.success { color: var(--vscode-testing-iconPassed, #3fb950); }
-  .found.error, .status.error { color: var(--vscode-errorForeground); }
-  .status.progress { color: var(--vscode-progressBar-background, var(--vscode-foreground)); }
-  .status.success { color: var(--vscode-testing-iconPassed, #3fb950); }
-  .list {
-    flex: 1;
-    min-height: 220px;
-    overflow: auto;
-    border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, rgba(128,128,128,.4)));
-    background: var(--vscode-editor-background);
-    padding: 4px 0;
-  }
-  .file {
-    display: flex;
-    gap: 6px;
-    align-items: flex-start;
-    padding: 2px 8px;
-    white-space: nowrap;
-  }
-  .file span { font-family: var(--vscode-editor-font-family); font-size: 12px; }
-  .footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-top: 18px;
-    min-height: 32px;
-  }
-  .status {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    margin: 0;
-    min-height: 32px;
-    line-height: 1.3;
-    white-space: pre-wrap;
-  }
-  #load {
-    flex: 0 0 auto;
-    height: 32px;
-    margin: 0;
-    padding: 0 14px;
+  button { font: inherit; cursor: pointer; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .icon-btn {
+    color: var(--vscode-icon-foreground);
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    width: 22px;
+    height: 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
+  .icon-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
+  #browse, .select-chevron {
+    position: absolute;
+    right: 1px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .select-chevron {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: var(--vscode-icon-foreground);
+  }
+  #base:disabled + .select-chevron { opacity: 0.45; }
+  .changes {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; height: 22px; min-width: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    #read-icon.spin { animation: none; }
+  }
+  #read-icon.spin { animation: codicon-spin 1.5s steps(30) infinite; }
+  @keyframes codicon-spin {
+    100% { transform: rotate(360deg); }
+  }
+  .list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    padding: 0 2px;
+    cursor: pointer;
+  }
+  .file:hover { background: var(--vscode-list-hoverBackground); }
+  .file input { margin: 0; flex: 0 0 auto; }
+  .file .text {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  }
+  .file .name { flex: 0 0 auto; }
+  .file .dir {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vscode-descriptionForeground);
+  }
+  .status {
+    flex: 1;
+    min-width: 0;
+    margin-right: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .status:empty { display: none; }
+  .status.success { color: var(--vscode-testing-iconPassed, #3fb950); }
+  .status.error { color: var(--vscode-errorForeground); }
+  .status.progress { color: var(--vscode-foreground); }
+  #load {
+    width: 100%;
+    border: none;
+    padding: 6px 10px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    font-weight: 600;
+  }
+  #load:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
 </style>
 </head>
 <body>
   <div id="unsupported" class="unsupported" hidden>Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.</div>
-  <div id="form">
-    <details class="settings-box">
-      <summary>Настройки</summary>
-      <div class="settings">
-        <label><input id="skipDb" type="checkbox" /> Не обновлять конфигурацию базы данных</label>
-        <label><input id="openConf" type="checkbox" /> Открыть конфигуратор после успешной загрузки</label>
-      </div>
-    </details>
-    <div class="folder-block">
+  <div id="form" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;">
+    <div>
       <label class="field" for="path">Папка проекта</label>
-      <div class="row">
+      <div class="path-row">
         <input id="path" type="text" spellcheck="false" />
-        <button id="browse" type="button">Обзор...</button>
+        <button id="browse" class="icon-btn" type="button" title="Выбрать папку"><span class="codicon codicon-search"></span></button>
       </div>
     </div>
-    <div class="base-block">
+    <div>
       <label class="field" for="base">База 1С</label>
-      <div class="row">
+      <div class="path-row">
         <select id="base"></select>
-        <button id="refresh" type="button">Обновить</button>
+        <span class="select-chevron codicon codicon-chevron-down" aria-hidden="true"></span>
       </div>
     </div>
-    <div class="read-row">
-      <button id="read" type="button">Прочитать изменения</button>
-      <span id="found" class="found">Изменений не найдено</span>
-    </div>
-    <div class="select-row">
-      <button id="all" class="tiny" type="button" title="Выделить все">✓</button>
-      <button id="none" class="tiny" type="button" title="Снять выделение">□</button>
-    </div>
-    <div id="list" class="list"></div>
-    <div class="footer">
-      <div id="status" class="status">Выберите папку и базу, затем нажмите «Прочитать изменения»</div>
-      <button id="load" class="primary" type="button" disabled>Загрузить выбранные</button>
+    <button id="load" type="button" disabled>Загрузить</button>
+    <div class="changes">
+      <div class="toolbar">
+        <div id="status" class="status"></div>
+        <button id="read" class="icon-btn" type="button" title="Обновить изменения"><span id="read-icon" class="codicon codicon-refresh"></span></button>
+        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="codicon codicon-check-all"></span></button>
+        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="codicon codicon-clear-all"></span></button>
+      </div>
+      <div id="list" class="list"></div>
     </div>
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const $ = (id) => document.getElementById(id);
     let fileSig = '';
-    let applying = false;
-
     const post = (message) => vscode.postMessage(message);
 
     $('browse').addEventListener('click', () => post({ type: 'browse' }));
-    $('refresh').addEventListener('click', () => post({ type: 'refreshBases' }));
     $('read').addEventListener('click', () => post({ type: 'readChanges' }));
     $('load').addEventListener('click', () => post({ type: 'load' }));
     $('all').addEventListener('click', () => post({ type: 'selectAll', checked: true }));
     $('none').addEventListener('click', () => post({ type: 'selectAll', checked: false }));
     $('path').addEventListener('change', () => post({ type: 'setProjectPath', path: $('path').value }));
+    let lastState = null;
+    $('base').addEventListener('pointerenter', () => post({ type: 'refreshBases' }));
+    $('base').addEventListener('pointerdown', () => post({ type: 'refreshBases' }));
     $('base').addEventListener('change', () => post({ type: 'selectBase', index: Number($('base').value) }));
-    $('skipDb').addEventListener('change', () => post({ type: 'setUpdateDatabase', value: !$('skipDb').checked }));
-    $('openConf').addEventListener('change', () => post({ type: 'setOpenConfigurator', value: $('openConf').checked }));
+    $('base').addEventListener('blur', () => { if (lastState) render(lastState); });
+
+    function fileParts(filePath) {
+      const norm = String(filePath).replace(/\\\\/g, '/');
+      const slash = norm.lastIndexOf('/');
+      return {
+        name: slash >= 0 ? norm.slice(slash + 1) : norm,
+        dir: slash >= 0 ? norm.slice(0, slash).replace(/\\//g, '\\\\') : ''
+      };
+    }
 
     function setDisabled(loading, windows) {
       const off = loading || !windows;
-      for (const id of ['path', 'browse', 'base', 'refresh', 'read', 'skipDb', 'openConf', 'all', 'none']) {
+      for (const id of ['path', 'browse', 'base', 'read', 'all', 'none']) {
         $(id).disabled = off;
       }
     }
@@ -245,7 +235,16 @@ export function webviewHtml(nonce: string): string {
         box.checked = file.checked;
         box.addEventListener('change', () => post({ type: 'toggleFile', index, checked: box.checked }));
         const text = document.createElement('span');
-        text.textContent = file.path;
+        text.className = 'text';
+        const parts = fileParts(file.path);
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = parts.name;
+        const dir = document.createElement('span');
+        dir.className = 'dir';
+        dir.textContent = parts.dir;
+        text.append(name, dir);
+        row.title = parts.dir ? parts.dir + '\\\\' + parts.name : parts.name;
         row.append(box, text);
         list.append(row);
       });
@@ -253,50 +252,49 @@ export function webviewHtml(nonce: string): string {
     }
 
     function render(state) {
-      applying = true;
+      lastState = state;
       $('unsupported').hidden = state.windows;
       $('form').hidden = !state.windows;
       if (document.activeElement !== $('path')) $('path').value = state.projectPath || '';
       const base = $('base');
-      const labels = state.bases.map((b) => b.label).join('\\n');
-      if (base.dataset.labels !== labels) {
+      const labels = (state.bases || []).map((b) => b.name).join('\\n');
+      const editingBase = document.activeElement === base;
+      if (!editingBase && base.dataset.labels !== labels) {
         base.dataset.labels = labels;
         base.replaceChildren();
         if (!state.bases.length) {
           const opt = document.createElement('option');
           opt.value = '-1';
-          opt.textContent = 'Базы не найдены — запустите 1С:Предприятие и добавьте базы';
+          opt.textContent = 'Базы не найдены';
           base.append(opt);
         } else {
           state.bases.forEach((item, index) => {
             const opt = document.createElement('option');
             opt.value = String(index);
-            opt.textContent = item.label;
+            opt.textContent = item.name;
+            opt.title = item.label;
             base.append(opt);
           });
         }
       }
-      if (document.activeElement !== base) {
+      if (!editingBase) {
         base.value = state.bases.length ? String(state.selectedBase) : '-1';
       }
-      base.disabled = !state.bases.length;
-      $('skipDb').checked = !state.updateDatabase;
-      $('openConf').checked = state.openConfigurator;
-      const found = $('found');
-      found.textContent = state.foundText || 'Изменений не найдено';
-      found.className = 'found ' + (state.foundTone || 'muted');
       const status = $('status');
       status.textContent = state.statusText || '';
+      status.title = state.statusText || '';
       status.className = 'status ' + (state.statusTone || 'muted');
       renderFiles(state.files || []);
       const checked = (state.files || []).filter((f) => f.checked).length;
       const load = $('load');
-      load.textContent = checked > 0 ? 'Загрузить выбранные (' + checked + ')' : 'Загрузить выбранные';
+      load.textContent = checked > 0 ? 'Загрузить (' + checked + ')' : 'Загрузить';
+      const reading = !!state.reading;
+      $('read-icon').classList.toggle('spin', reading);
       setDisabled(!!state.loading, !!state.windows);
+      if (reading) $('read').disabled = true;
       if (!state.bases.length) base.disabled = true;
       load.disabled = !!state.loading || !state.windows || checked === 0 || !state.bases.length;
       document.querySelectorAll('#list input').forEach((el) => { el.disabled = !!state.loading; });
-      applying = false;
     }
 
     window.addEventListener('message', (event) => {

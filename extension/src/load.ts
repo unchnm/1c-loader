@@ -11,7 +11,6 @@ export interface LoadRequest {
   xmlDir: string;
   listFile: string;
   logFile: string;
-  updateDatabase: boolean;
 }
 
 const MISMATCH_RE = /\(\s*([0-9]+(?:\.[0-9]+){1,3})\s*-\s*([0-9]+(?:\.[0-9]+){1,3})\s*\)/;
@@ -31,12 +30,10 @@ export function buildDesignerArgs(req: Omit<LoadRequest, 'exePath'>): string[] {
     req.listFile,
     '-Format',
     'Hierarchical',
-    '-updateConfigDumpInfo'
+    '-updateConfigDumpInfo',
+    '/Out',
+    req.logFile
   );
-  if (req.updateDatabase) {
-    args.push('/UpdateDBCfg');
-  }
-  args.push('/Out', req.logFile);
   return args;
 }
 

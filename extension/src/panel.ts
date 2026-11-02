@@ -7,7 +7,6 @@ import {
   findGitRoot,
   findXmlRoot,
   getGitChangedFiles,
-  gitAvailable,
   subPathOf,
   toLoadRelativePaths
 } from './changes';
@@ -24,7 +23,7 @@ import {
 } from './load';
 import { find1CExecutable } from './platform';
 import { FileItem, Infobase, PanelState, StatusTone } from './types';
-import { launcherHtml, webviewHtml } from './webviewHtml';
+import { webviewHtml } from './webviewHtml';
 
 function showToast(text: string, ms: number): void {
   const title = text.replace(/\s*\n\s*/g, ' ').trim();
@@ -40,24 +39,22 @@ interface LoadContext {
   listFile: string;
   logFile: string;
   base: Infobase;
-  updateDatabase: boolean;
 }
 
 export class LoaderViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'onecLoader.panel';
 
   private view?: vscode.WebviewView;
-  private formPanel?: vscode.WebviewPanel;
-  private formWebview?: vscode.Webview;
   private projectPath = '';
   private bases: Infobase[] = [];
   private selectedIndex = 0;
   private files: FileItem[] = [];
-  private foundText = 'Изменений не найдено';
+  private foundText = '';
   private foundTone: StatusTone = 'muted';
-  private statusText = 'Выберите папку и базу, затем нажмите «Прочитать изменения»';
+  private statusText = '';
   private statusTone: StatusTone = 'muted';
   private loading = false;
+  private reading = false;
   private loadGen = 0;
   private settledGen = -1;
   private versionRetried = false;
@@ -71,66 +68,26 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
-    webviewView.webview.options = { enableScripts: true };
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
+    };
     const nonce = crypto.randomBytes(16).toString('hex');
-    webviewView.webview.html = launcherHtml(nonce);
+    const fontUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'codicon.ttf'));
+    webviewView.webview.html = webviewHtml(nonce, fontUri.toString(), webviewView.webview.cspSource);
     webviewView.webview.onDidReceiveMessage(message => {
-      if (message?.type === 'openWindow') {
-        void this.openFormWindow();
-      }
+      void this.onMessage(message);
     });
     webviewView.onDidChangeVisibility(() => {
-      if (webviewView.visible) {
-        void this.openFormWindow();
+      if (webviewView.visible && !this.loading) {
+        this.reloadBases(true);
+        this.postState();
       }
     });
-    void this.openFormWindow();
-  }
-
-  async openFormWindow(): Promise<void> {
-    if (process.platform !== 'win32') {
-      showToast('Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.', 3000);
-      return;
-    }
-    if (this.formPanel) {
-      this.formPanel.reveal(vscode.ViewColumn.Active, false);
-      return;
-    }
-    this.createFormWindow();
-  }
-
-  private createFormWindow(): void {
     if (!this.projectPath) {
       this.projectPath = this.defaultProjectPath();
     }
     this.reloadBases(false);
-    const panel = vscode.window.createWebviewPanel(
-      'onecLoader.form',
-      '1C: Загрузка изменённых файлов',
-      vscode.ViewColumn.Active,
-      { enableScripts: true, retainContextWhenHidden: true }
-    );
-    this.formPanel = panel;
-    this.attachForm(panel.webview);
-    panel.onDidDispose(() => {
-      if (this.formPanel === panel) {
-        this.formPanel = undefined;
-        this.formWebview = undefined;
-      }
-    });
-  }
-
-  private attachForm(webview: vscode.Webview): void {
-    this.formWebview = webview;
-    const nonce = crypto.randomBytes(16).toString('hex');
-    webview.html = webviewHtml(nonce);
-    webview.onDidReceiveMessage(message => {
-      void this.onMessage(message);
-    });
-    this.postState();
-  }
-
-  notifyConfig(): void {
     this.postState();
   }
 
@@ -152,18 +109,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     return first ? first.uri.fsPath : '';
   }
 
-  private config() {
-    return vscode.workspace.getConfiguration('onecLoader');
-  }
-
-  private updateDatabase(): boolean {
-    return this.config().get<boolean>('updateDatabase', true);
-  }
-
-  private openConfiguratorAfter(): boolean {
-    return this.config().get<boolean>('openConfigurator', false);
-  }
-
   private state(): PanelState {
     return {
       windows: process.platform === 'win32',
@@ -176,13 +121,12 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       statusText: this.statusText,
       statusTone: this.statusTone,
       loading: this.loading,
-      updateDatabase: this.updateDatabase(),
-      openConfigurator: this.openConfiguratorAfter()
+      reading: this.reading
     };
   }
 
   private postState(): void {
-    void this.formWebview?.postMessage({ type: 'state', state: this.state() });
+    void this.view?.webview.postMessage({ type: 'state', state: this.state() });
   }
 
   private setStatus(text: string, tone: StatusTone): void {
@@ -204,11 +148,11 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.selectedIndex = idx >= 0 ? idx : 0;
   }
 
-  private clearFiles(status: string): void {
+  private clearFiles(): void {
     this.files = [];
-    this.foundText = 'Изменений не найдено';
+    this.foundText = '';
     this.foundTone = 'muted';
-    this.setStatus(status, 'muted');
+    this.setStatus('', 'muted');
   }
 
   private async onMessage(message: { type: string; path?: string; index?: number; checked?: boolean; value?: boolean }): Promise<void> {
@@ -232,7 +176,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         await this.rememberPath(next);
-        this.clearFiles('Папка выбрана. Нажмите «Прочитать изменения».');
+        this.clearFiles();
         return;
       }
       case 'refreshBases':
@@ -268,24 +212,12 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
         }
         this.postState();
         return;
-      case 'setUpdateDatabase':
-        await this.config().update('updateDatabase', !!message.value, this.configTarget());
-        return;
-      case 'setOpenConfigurator':
-        await this.config().update('openConfigurator', !!message.value, this.configTarget());
-        return;
       case 'load':
         await this.startLoad();
         return;
       default:
         return;
     }
-  }
-
-  private configTarget(): vscode.ConfigurationTarget {
-    return vscode.workspace.workspaceFolders?.length
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
   }
 
   private async browse(): Promise<void> {
@@ -305,56 +237,48 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     await this.rememberPath(picked[0].fsPath);
-    this.clearFiles('Папка выбрана. Нажмите «Прочитать изменения».');
+    this.clearFiles();
   }
 
   private async readChanges(): Promise<void> {
-    if (this.loading) {
+    if (this.loading || this.reading) {
       return;
     }
+    this.reading = true;
     this.files = [];
+    this.foundText = '';
     this.foundTone = 'muted';
-    const folder = this.projectPath.trim();
-    if (!folder) {
-      this.foundText = 'Изменений не найдено';
-      this.setStatus('Сначала выберите папку проекта.', 'muted');
-      return;
-    }
-    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
-      this.foundText = 'Изменений не найдено';
-      this.setStatus(`Папка не найдена: ${folder}`, 'error');
-      return;
-    }
-    if (!(await gitAvailable())) {
-      this.foundText = 'Изменений не найдено';
-      this.setStatus('Ошибка: git не найден в PATH. Установите Git for Windows.', 'error');
-      return;
-    }
-    const gitRoot = findGitRoot(folder);
-    if (!gitRoot) {
-      this.foundText = 'Изменений не найдено';
-      this.setStatus('Ошибка: папка не является git-репозиторием (нет .git).', 'error');
-      return;
-    }
-    this.setStatus('Читаем git diff...', 'muted');
-    const xmlDir = findXmlRoot(folder) ?? folder;
-    const subPath = subPathOf(gitRoot, xmlDir);
+    this.postState();
     try {
-      const names = await getGitChangedFiles(gitRoot, subPath);
-      if (names.length === 0) {
-        this.files = [];
-        this.foundText = 'Нет изменений';
-        this.foundTone = 'muted';
-        this.setStatus('Незакоммиченных изменений в XML/BSL-файлах не обнаружено.', 'muted');
+      const folder = this.projectPath.trim();
+      if (!folder) {
+        this.setStatus('Сначала выберите папку проекта.', 'error');
         return;
       }
+      if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+        this.setStatus(`Папка не найдена: ${folder}`, 'error');
+        return;
+      }
+      const gitRoot = findGitRoot(folder);
+      if (!gitRoot) {
+        this.setStatus('Ошибка: папка не является git-репозиторием (нет .git).', 'error');
+        return;
+      }
+      const xmlDir = findXmlRoot(folder) ?? folder;
+      const subPath = subPathOf(gitRoot, xmlDir);
+      const names = await getGitChangedFiles(gitRoot, subPath);
       this.files = names.map(name => ({ path: name, checked: true }));
-      this.foundText = `Найдено: ${names.length} файлов`;
-      this.foundTone = 'success';
-      this.setStatus('Снимите галочки с ненужных файлов и нажмите «Загрузить».', 'muted');
+      this.setStatus('', 'muted');
     } catch (error) {
-      this.foundText = 'Изменений не найдено';
-      this.setStatus(`Ошибка git: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'ENOENT' || message.includes('ENOENT')) {
+        this.setStatus('Ошибка: git не найден в PATH. Установите Git for Windows.', 'error');
+      } else {
+        this.setStatus(`Ошибка git: ${message}`, 'error');
+      }
+    } finally {
+      this.reading = false;
+      this.postState();
     }
   }
 
@@ -402,8 +326,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       relFiles,
       listFile: paths.listFile,
       logFile: paths.logFile,
-      base,
-      updateDatabase: this.updateDatabase()
+      base
     };
     this.loading = true;
     this.versionRetried = false;
@@ -436,8 +359,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
         infobase: ctx.base,
         xmlDir: ctx.xmlDir,
         listFile: ctx.listFile,
-        logFile: ctx.logFile,
-        updateDatabase: ctx.updateDatabase
+        logFile: ctx.logFile
       });
     } catch (error) {
       this.failStart(error instanceof Error ? error.message : String(error));
@@ -532,7 +454,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     if (code === 0 && !spawnError) {
       this.setStatus('Загрузка завершена успешно!', 'success');
       showToast('Загрузка завершена успешно!', 2000);
-      if (this.openConfiguratorAfter() && ctx && this.loadingExe) {
+      if (ctx && this.loadingExe) {
         openConfigurator(this.loadingExe, ctx.base);
       }
       return;

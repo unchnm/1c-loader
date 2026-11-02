@@ -86,41 +86,58 @@ export function toLoadRelativePaths(gitFiles: string[], subPath: string): string
   });
 }
 
-function gitOutput(cwd: string, args: string[]): Promise<{ ok: boolean; lines: string[]; error: string }> {
+function gitOutput(cwd: string, args: string[]): Promise<{ ok: boolean; lines: string[]; error: string; code: string }> {
   return new Promise(resolve => {
     execFile(
       'git',
       ['-c', 'core.quotepath=false', ...args],
       { cwd, windowsHide: true, maxBuffer: 32 * 1024 * 1024 },
       (err, stdout, stderr) => {
-        const lines = stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        const lines = stdout.split(/\r?\n/).filter(line => line.trim().length > 0);
         if (err) {
-          resolve({ ok: false, lines, error: (stderr || err.message).trim() });
+          const code = (err as NodeJS.ErrnoException).code || '';
+          resolve({ ok: false, lines, error: (stderr || err.message).trim(), code });
           return;
         }
-        resolve({ ok: true, lines, error: '' });
+        resolve({ ok: true, lines, error: '', code: '' });
       }
     );
   });
 }
 
-export async function gitAvailable(): Promise<boolean> {
-  return new Promise(resolve => {
-    execFile('git', ['--version'], { windowsHide: true }, err => resolve(!err));
-  });
+export function pathsFromStatus(lines: string[]): string[] {
+  const names: string[] = [];
+  for (const line of lines) {
+    if (line.length < 4) {
+      continue;
+    }
+    const x = line[0];
+    const y = line[1];
+    if ((x === 'D' || x === ' ') && (y === 'D' || y === ' ') && (x === 'D' || y === 'D')) {
+      continue;
+    }
+    let file = line.slice(3);
+    const arrow = file.lastIndexOf(' -> ');
+    if ((x === 'R' || x === 'C' || y === 'R' || y === 'C') && arrow >= 0) {
+      file = file.slice(arrow + 4);
+    }
+    names.push(file.trim());
+  }
+  return names;
 }
 
 export async function getGitChangedFiles(gitRoot: string, subPath = ''): Promise<string[]> {
-  const unstaged = await gitOutput(gitRoot, ['diff', 'HEAD', '--name-only', '--diff-filter=ACMR']);
-  if (!unstaged.ok) {
-    throw new Error('git diff error: ' + unstaged.error);
+  const prefix = subPath.replace(/\\/g, '/').replace(/\/$/, '');
+  const args = ['--no-optional-locks', 'status', '--porcelain', '-uall'];
+  if (prefix) {
+    args.push('--', prefix);
   }
-  const staged = await gitOutput(gitRoot, ['diff', '--cached', '--name-only', '--diff-filter=ACMR']);
-  const untracked = await gitOutput(gitRoot, ['ls-files', '--others', '--exclude-standard']);
-  const names = [
-    ...unstaged.lines,
-    ...(staged.ok ? staged.lines : []),
-    ...(untracked.ok ? untracked.lines : [])
-  ];
-  return filterChangedNames(names, subPath);
+  const result = await gitOutput(gitRoot, args);
+  if (!result.ok) {
+    if (result.code === 'ENOENT') {
+      throw new Error('ENOENT');
+    }
+    throw new Error('git status error: ' + result.error);
+  }
+  return filterChangedNames(pathsFromStatus(result.lines), subPath);
 }
