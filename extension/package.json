@@ -1,16 +1,20 @@
 {
   "name": "onec-loader",
   "displayName": "1C: Loader",
-    "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С из боковой панели",
-    "version": "0.2.1",
+  "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С из боковой панели",
+  "version": "0.2.1",
   "icon": "media/icon.png",
   "publisher": "unchnm",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "extensionKind": ["ui"],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
   "main": "./out/extension.js",
   "activationEvents": [
     "onView:onecLoader.panel",
@@ -22,7 +26,7 @@
         {
           "id": "onec-loader",
           "title": "1C: Loader",
-          "icon": "media/activity-bar.png"
+          "icon": "$(onec-loader-logo)"
         }
       ]
     },
@@ -41,7 +45,16 @@
         "title": "Открыть загрузку изменений",
         "category": "1C"
       }
-    ]
+    ],
+    "icons": {
+      "onec-loader-logo": {
+        "description": "1C Loader logo",
+        "default": {
+          "fontPath": "media/onec-loader-icons.woff",
+          "fontCharacter": "\\E001"
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p .",
