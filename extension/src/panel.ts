@@ -470,6 +470,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.loadCtx = null;
     if (code === 0 && !spawnError) {
       this.postState();
+      showToast('Загрузка завершена успешно!', 2000);
       if (ctx && this.loadingExe) {
         openConfigurator(this.loadingExe, ctx.base);
       }

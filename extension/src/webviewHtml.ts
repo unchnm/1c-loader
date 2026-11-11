@@ -75,25 +75,20 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   .icon-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
   .selection-icon {
     position: relative;
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
     display: inline-block;
-  }
-  .selection-icon::before {
-    content: "";
-    position: absolute;
-    inset: 1px;
     box-sizing: border-box;
     border: 1px solid currentColor;
-    border-radius: 1px;
+    border-radius: 2px;
   }
   .selection-icon-checked::after {
     content: "";
     position: absolute;
-    left: 3px;
-    top: 5px;
-    width: 6px;
-    height: 3px;
+    left: 2px;
+    top: 3px;
+    width: 7px;
+    height: 4px;
     box-sizing: border-box;
     border-left: 1.5px solid currentColor;
     border-bottom: 1.5px solid currentColor;
