@@ -336,36 +336,57 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     const relFiles = toLoadRelativePaths(selected, subPath);
     const base = this.bases[this.selectedIndex];
     const required = platformVersionOf(base);
+
+    // Показываем системный progress до долгих проверок платформы и конфигуратора.
+    this.loading = true;
+    this.versionRetried = false;
+    this.loadingExe = '';
+    this.statusText = '';
+    this.statusTone = 'muted';
+    this.startProgress();
+    this.postState();
+
     const platform = await find1CExecutable(required);
     if (!platform.path) {
+      this.loading = false;
+      this.stopProgress();
+      this.postState();
       void vscode.window.showErrorMessage('1cv8.exe не найден. Установите платформу 1С:Предприятие.');
       return;
     }
     const busy = await configuratorBusyMessage(base);
     if (busy) {
+      this.loading = false;
+      this.stopProgress();
+      this.postState();
       showToast(busy, 3000);
       return;
     }
     if (platform.warning) {
       showToast(`Платформа: ${platform.matchedVersion}. ${platform.warning}`, 3000);
     }
-    const paths = tempLoadPaths();
-    clearRepositoryLog(gitRoot);
-    writeListFile(paths.listFile, relFiles);
-    this.loadCtx = {
-      gitRoot,
-      xmlDir,
-      relFiles,
-      listFile: paths.listFile,
-      logFile: paths.logFile,
-      base
-    };
-    this.loading = true;
-    this.versionRetried = false;
-    this.loadingExe = platform.path;
-    this.setStatus('', 'muted');
-    this.startProgress();
-    this.spawnLoad(platform.path);
+    try {
+      const paths = tempLoadPaths();
+      clearRepositoryLog(gitRoot);
+      writeListFile(paths.listFile, relFiles);
+      this.loadCtx = {
+        gitRoot,
+        xmlDir,
+        relFiles,
+        listFile: paths.listFile,
+        logFile: paths.logFile,
+        base
+      };
+      this.loadingExe = platform.path;
+      this.spawnLoad(platform.path);
+    } catch (error) {
+      this.loading = false;
+      this.stopProgress();
+      this.proc = null;
+      this.loadCtx = null;
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus(`Ошибка подготовки загрузки: ${message}`, 'error');
+    }
   }
 
   private spawnLoad(exePath: string): void {

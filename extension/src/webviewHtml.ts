@@ -183,7 +183,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   <div id="unsupported" class="unsupported" hidden>Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.</div>
   <div id="form" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;">
     <div>
-      <label class="field" for="path">Папка проекта</label>
+        <label class="field" for="path">Проект</label>
       <div class="path-row">
         <input id="path" type="text" spellcheck="false" />
         <button id="browse" class="icon-btn" type="button" title="Выбрать папку"><span class="codicon codicon-search"></span></button>
