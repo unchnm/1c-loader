@@ -79,9 +79,11 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     height: 13px;
     display: inline-block;
     box-sizing: border-box;
-    border: 1px solid currentColor;
+    color: #d4d4d4;
+    border: 1px solid #d4d4d4;
     border-radius: 2px;
   }
+  .selection-icon-checked { background: #000; }
   .selection-icon-checked::after {
     content: "";
     position: absolute;
