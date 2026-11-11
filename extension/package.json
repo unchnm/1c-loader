@@ -2,7 +2,7 @@
   "name": "onec-loader",
   "displayName": "1C: Loader",
   "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С из боковой панели",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "icon": "media/icon.png",
   "publisher": "unchnm",
   "license": "MIT",
