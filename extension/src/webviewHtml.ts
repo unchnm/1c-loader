@@ -66,8 +66,11 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     background: transparent;
     border: none;
     border-radius: 5px;
+    box-sizing: border-box;
     width: 22px;
     height: 22px;
+    padding: 0;
+    flex: 0 0 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -79,6 +82,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     height: 13px;
     display: inline-block;
     box-sizing: border-box;
+    flex: 0 0 13px;
     color: #d4d4d4;
     border: 1px solid #d4d4d4;
     border-radius: 2px;
