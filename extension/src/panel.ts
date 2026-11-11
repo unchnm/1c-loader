@@ -63,6 +63,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private proc: ChildProcess | null = null;
   private loadCtx: LoadContext | null = null;
   private loadingExe = '';
+  private progressDone: (() => void) | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -127,6 +128,32 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
 
   private postState(): void {
     void this.view?.webview.postMessage({ type: 'state', state: this.state() });
+  }
+
+  public refresh(): void {
+    if (process.platform !== 'win32') {
+      return;
+    }
+    void this.readChanges();
+  }
+
+  private startProgress(title: string): void {
+    this.stopProgress();
+    let resolve!: () => void;
+    const pending = new Promise<void>(done => {
+      resolve = done;
+    });
+    this.progressDone = resolve;
+    void vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title, cancellable: false },
+      () => pending
+    );
+  }
+
+  private stopProgress(): void {
+    const resolve = this.progressDone;
+    this.progressDone = null;
+    resolve?.();
   }
 
   private setStatus(text: string, tone: StatusTone): void {
@@ -248,6 +275,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.files = [];
     this.foundText = '';
     this.foundTone = 'muted';
+    this.startProgress('Обновление изменений');
     this.postState();
     try {
       const folder = this.projectPath.trim();
@@ -278,6 +306,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       }
     } finally {
       this.reading = false;
+      this.stopProgress();
       this.postState();
     }
   }
@@ -332,6 +361,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.versionRetried = false;
     this.loadingExe = platform.path;
     this.loadTicks = 0;
+    this.startProgress('Загрузка изменений');
     const verNote = required
       ? `Платформа: ${required} → ${platform.matchedVersion}. Подготовка...`
       : `Платформа: ${platform.matchedVersion}. Подготовка...`;
@@ -390,6 +420,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
 
   private failStart(message: string): void {
     this.cleanupFiles();
+    this.stopProgress();
     this.loading = false;
     this.proc = null;
     this.loadCtx = null;
@@ -448,6 +479,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       copyMismatchLog(ctx.logFile);
     }
     this.cleanupFiles();
+    this.stopProgress();
     this.loading = false;
     this.proc = null;
     this.loadCtx = null;

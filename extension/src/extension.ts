@@ -12,6 +12,9 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showWarningMessage('Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.');
       }
       await vscode.commands.executeCommand('onecLoader.panel.focus');
+    }),
+    vscode.commands.registerCommand('onecLoader.refresh', () => {
+      provider.refresh();
     })
   );
 }

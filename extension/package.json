@@ -18,7 +18,8 @@
   "main": "./out/extension.js",
   "activationEvents": [
     "onView:onecLoader.panel",
-    "onCommand:onecLoader.show"
+    "onCommand:onecLoader.show",
+    "onCommand:onecLoader.refresh"
   ],
   "contributes": {
     "viewsContainers": {
@@ -35,7 +36,7 @@
         {
           "type": "webview",
           "id": "onecLoader.panel",
-          "name": "Загрузка изменений"
+          "name": ""
         }
       ]
     },
@@ -44,8 +45,23 @@
         "command": "onecLoader.show",
         "title": "Открыть загрузку изменений",
         "category": "1C"
+      },
+      {
+        "command": "onecLoader.refresh",
+        "title": "Обновить изменения",
+        "category": "1C",
+        "icon": "$(refresh)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "onecLoader.refresh",
+          "when": "view == onecLoader.panel",
+          "group": "navigation"
+        }
+      ]
+    },
     "icons": {
       "onec-loader-logo": {
         "description": "1C Loader logo",

@@ -73,6 +73,26 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     justify-content: center;
   }
   .icon-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
+  .selection-icon {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+  }
+  .selection-icon > .codicon {
+    position: absolute;
+    inset: 0;
+  }
+  .selection-icon > .codicon-check {
+    font-size: 12px;
+    line-height: 16px;
+    left: 2px;
+    top: 0;
+    right: auto;
+    bottom: auto;
+    width: 12px;
+    height: 16px;
+  }
   #browse, .select-chevron {
     position: absolute;
     right: 1px;
@@ -96,13 +116,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     min-height: 0;
   }
   .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; height: 22px; min-width: 0; }
-  @media (prefers-reduced-motion: reduce) {
-    #read-icon.spin { animation: none; }
-  }
-  #read-icon.spin { animation: codicon-spin 1.5s steps(30) infinite; }
-  @keyframes codicon-spin {
-    100% { transform: rotate(360deg); }
-  }
   .list {
     flex: 1;
     min-height: 0;
@@ -179,8 +192,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     <div class="changes">
       <div class="toolbar">
         <div id="status" class="status"></div>
-        <button id="read" class="icon-btn" type="button" title="Обновить изменения"><span id="read-icon" class="codicon codicon-refresh"></span></button>
-        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="codicon codicon-check"></span></button>
+        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="selection-icon" aria-hidden="true"><span class="codicon codicon-primitive-square"></span><span class="codicon codicon-check"></span></span></button>
         <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="codicon codicon-primitive-square"></span></button>
       </div>
       <div id="list" class="list"></div>
@@ -193,7 +205,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     const post = (message) => vscode.postMessage(message);
 
     $('browse').addEventListener('click', () => post({ type: 'browse' }));
-    $('read').addEventListener('click', () => post({ type: 'readChanges' }));
     $('load').addEventListener('click', () => post({ type: 'load' }));
     $('all').addEventListener('click', () => post({ type: 'selectAll', checked: true }));
     $('none').addEventListener('click', () => post({ type: 'selectAll', checked: false }));
@@ -215,7 +226,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
 
     function setDisabled(loading, windows) {
       const off = loading || !windows;
-      for (const id of ['path', 'browse', 'base', 'read', 'all', 'none']) {
+      for (const id of ['path', 'browse', 'base', 'all', 'none']) {
         $(id).disabled = off;
       }
     }
@@ -288,10 +299,10 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
       const checked = (state.files || []).filter((f) => f.checked).length;
       const load = $('load');
       load.textContent = checked > 0 ? 'Загрузить (' + checked + ')' : 'Загрузить';
-      const reading = !!state.reading;
-      $('read-icon').classList.toggle('spin', reading);
       setDisabled(!!state.loading, !!state.windows);
-      if (reading) $('read').disabled = true;
+      const hasFiles = (state.files || []).length > 0;
+      $('all').hidden = !hasFiles;
+      $('none').hidden = !hasFiles;
       if (!state.bases.length) base.disabled = true;
       load.disabled = !!state.loading || !state.windows || checked === 0 || !state.bases.length;
       document.querySelectorAll('#list input').forEach((el) => { el.disabled = !!state.loading; });
