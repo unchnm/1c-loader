@@ -30,7 +30,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   html, body { height: 100%; margin: 0; }
   body {
     box-sizing: border-box;
-    position: relative;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -39,33 +38,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     background: var(--vscode-sideBar-background);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
-  }
-  .progress-line {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 1;
-  }
-  .progress-line::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 30%;
-    background: var(--vscode-progressBar-background, #0e70c0);
-    animation: progress-line 1.2s ease-in-out infinite;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .progress-line::before { animation: none; left: 35%; }
-  }
-  @keyframes progress-line {
-    0% { transform: translateX(-110%); }
-    50% { transform: translateX(170%); }
-    100% { transform: translateX(360%); }
   }
   .unsupported {
     padding: 8px;
@@ -103,8 +75,8 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   .icon-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
   .selection-icon {
     position: relative;
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     display: inline-block;
   }
   .selection-icon::before {
@@ -119,7 +91,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     content: "";
     position: absolute;
     left: 3px;
-    top: 6px;
+    top: 5px;
     width: 6px;
     height: 3px;
     box-sizing: border-box;
@@ -207,7 +179,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
 </style>
 </head>
 <body>
-  <div id="progress-line" class="progress-line" hidden aria-hidden="true"></div>
   <div id="unsupported" class="unsupported" hidden>Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.</div>
   <div id="form" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;">
     <div>
@@ -337,7 +308,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
       load.textContent = checked > 0 ? 'Загрузить (' + checked + ')' : 'Загрузить';
       setDisabled(!!state.loading, !!state.windows);
       const hasFiles = (state.files || []).length > 0;
-      $('progress-line').hidden = !state.loading && !state.reading;
       $('all').hidden = !hasFiles;
       $('none').hidden = !hasFiles;
       if (!state.bases.length) base.disabled = true;
