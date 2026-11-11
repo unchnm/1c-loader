@@ -362,9 +362,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       showToast(busy, 3000);
       return;
     }
-    if (platform.warning) {
-      showToast(`Платформа: ${platform.matchedVersion}. ${platform.warning}`, 3000);
-    }
     try {
       const paths = tempLoadPaths();
       clearRepositoryLog(gitRoot);
