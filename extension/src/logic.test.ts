@@ -5,7 +5,7 @@ import * as path from 'path';
 import test from 'node:test';
 import { filterChangedNames, findGitRoot, findXmlRoot, pathsFromStatus, subPathOf, toLoadRelativePaths } from './changes';
 import { connectionToken, parseIbases, platformVersionOf } from './ibases';
-import { buildDesignerArgs } from './load';
+import { buildDesignerArgs, clearRepositoryLog, copyFailureLog } from './load';
 import { compareVersions, versionPrefixMatch } from './version';
 
 const sample = `
@@ -105,4 +105,19 @@ test('аргументы дизайнера содержат listFile и не п
   assert.ok(args.includes('/S'));
   assert.ok(args.includes('srv\\base'));
   assert.ok(!args.some(arg => arg.toLowerCase().includes('devbase')));
+});
+
+test('ошибка загрузки сохраняется в корне репозитория', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-log-'));
+  const tempLog = path.join(root, 'temp-log.txt');
+  const repositoryLog = path.join(root, '.1c-log.txt');
+  fs.writeFileSync(repositoryLog, 'старый лог', 'utf8');
+  clearRepositoryLog(root);
+  assert.strictEqual(fs.existsSync(repositoryLog), false);
+
+  fs.writeFileSync(tempLog, 'ошибка 1С', 'utf8');
+  copyFailureLog(tempLog, root, 'резервная ошибка');
+  assert.strictEqual(fs.readFileSync(repositoryLog, 'utf8'), 'ошибка 1С');
+
+  fs.rmSync(root, { recursive: true, force: true });
 });

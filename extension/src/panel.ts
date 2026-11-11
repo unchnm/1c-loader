@@ -13,6 +13,8 @@ import {
 import { infobaseLabel, platformVersionOf, readIbases } from './ibases';
 import {
   configuratorBusyMessage,
+  clearRepositoryLog,
+  copyFailureLog,
   copyMismatchLog,
   openConfigurator,
   readLogText,
@@ -34,6 +36,7 @@ function showToast(text: string, ms: number): void {
 }
 
 interface LoadContext {
+  gitRoot: string;
   xmlDir: string;
   relFiles: string[];
   listFile: string;
@@ -58,8 +61,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private loadGen = 0;
   private settledGen = -1;
   private versionRetried = false;
-  private loadTicks = 0;
-  private timer: NodeJS.Timeout | null = null;
   private proc: ChildProcess | null = null;
   private loadCtx: LoadContext | null = null;
   private loadingExe = '';
@@ -349,8 +350,10 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       showToast(`Платформа: ${platform.matchedVersion}. ${platform.warning}`, 3000);
     }
     const paths = tempLoadPaths();
+    clearRepositoryLog(gitRoot);
     writeListFile(paths.listFile, relFiles);
     this.loadCtx = {
+      gitRoot,
       xmlDir,
       relFiles,
       listFile: paths.listFile,
@@ -360,12 +363,8 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.loading = true;
     this.versionRetried = false;
     this.loadingExe = platform.path;
-    this.loadTicks = 0;
+    this.setStatus('', 'muted');
     this.startProgress('Загрузка изменений');
-    const verNote = required
-      ? `Платформа: ${required} → ${platform.matchedVersion}. Подготовка...`
-      : `Платформа: ${platform.matchedVersion}. Подготовка...`;
-    this.setStatus(verNote, 'progress');
     this.spawnLoad(platform.path);
   }
 
@@ -396,16 +395,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.proc = proc;
-    this.setStatus('Загрузка запущена...', 'progress');
-    this.stopTimer();
-    this.timer = setInterval(() => {
-      if (!this.loading || gen !== this.loadGen) {
-        return;
-      }
-      this.loadTicks++;
-      const dots = '.'.repeat((this.loadTicks % 3) + 1);
-      this.setStatus(`Загрузка${dots}  (${this.loadTicks}с)`, 'progress');
-    }, 1000);
     proc.on('error', err => {
       if (gen === this.loadGen) {
         void this.finishLoad(gen, -1, err.message);
@@ -425,13 +414,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.proc = null;
     this.loadCtx = null;
     this.setStatus(`Ошибка запуска загрузки: ${message}`, 'error');
-  }
-
-  private stopTimer(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
   }
 
   private cleanupFiles(): void {
@@ -455,7 +437,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.settledGen = gen;
-    this.stopTimer();
     const ctx = this.loadCtx;
     const mismatch = ctx ? readVersionMismatch(ctx.logFile) : null;
     let code = exitCode;
@@ -468,15 +449,19 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       if (retry.path && !retry.usedFallback && !same) {
         this.versionRetried = true;
         this.loadingExe = retry.path;
-        this.loadTicks = 0;
-        this.setStatus(`Сервер ${mismatch.server}. Повтор клиентом ${retry.matchedVersion}...`, 'progress');
         this.spawnLoad(retry.path);
         return;
       }
     }
     const logText = ctx ? readLogText(ctx.logFile) : '';
     if (code !== 0 && ctx) {
-      copyMismatchLog(ctx.logFile);
+      const fallback = spawnError
+        ? `Ошибка запуска загрузки: ${spawnError}`
+        : `Загрузка завершилась с ошибкой.\r\nКод возврата: ${code}`;
+      copyFailureLog(ctx.logFile, ctx.gitRoot, fallback);
+      if (mismatch) {
+        copyMismatchLog(ctx.logFile);
+      }
     }
     this.cleanupFiles();
     this.stopProgress();
@@ -484,8 +469,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.proc = null;
     this.loadCtx = null;
     if (code === 0 && !spawnError) {
-      this.setStatus('Загрузка завершена успешно!', 'success');
-      showToast('Загрузка завершена успешно!', 2000);
       if (ctx && this.loadingExe) {
         openConfigurator(this.loadingExe, ctx.base);
       }
