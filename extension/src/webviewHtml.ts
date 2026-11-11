@@ -66,13 +66,40 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     background: transparent;
     border: none;
     border-radius: 5px;
+    box-sizing: border-box;
     width: 22px;
     height: 22px;
+    padding: 0;
+    flex: 0 0 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
   .icon-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
+  .selection-icon {
+    position: relative;
+    width: 13px;
+    height: 13px;
+    display: inline-block;
+    box-sizing: border-box;
+    flex: 0 0 13px;
+    color: #d4d4d4;
+    border: 1px solid #d4d4d4;
+    border-radius: 2px;
+  }
+  .selection-icon-checked { background: #000; }
+  .selection-icon-checked::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 3px;
+    width: 7px;
+    height: 4px;
+    box-sizing: border-box;
+    border-left: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+  }
   #browse, .select-chevron {
     position: absolute;
     right: 1px;
@@ -96,13 +123,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     min-height: 0;
   }
   .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; height: 22px; min-width: 0; }
-  @media (prefers-reduced-motion: reduce) {
-    #read-icon.spin { animation: none; }
-  }
-  #read-icon.spin { animation: codicon-spin 1.5s steps(30) infinite; }
-  @keyframes codicon-spin {
-    100% { transform: rotate(360deg); }
-  }
+  .toolbar button[hidden] { display: none; }
   .list {
     flex: 1;
     min-height: 0;
@@ -162,7 +183,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   <div id="unsupported" class="unsupported" hidden>Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.</div>
   <div id="form" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;">
     <div>
-      <label class="field" for="path">Папка проекта</label>
+        <label class="field" for="path">Проект</label>
       <div class="path-row">
         <input id="path" type="text" spellcheck="false" />
         <button id="browse" class="icon-btn" type="button" title="Выбрать папку"><span class="codicon codicon-search"></span></button>
@@ -179,9 +200,8 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     <div class="changes">
       <div class="toolbar">
         <div id="status" class="status"></div>
-        <button id="read" class="icon-btn" type="button" title="Обновить изменения"><span id="read-icon" class="codicon codicon-refresh"></span></button>
-        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="codicon codicon-check"></span></button>
-        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="codicon codicon-primitive-square"></span></button>
+        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="selection-icon selection-icon-checked" aria-hidden="true"></span></button>
+        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="selection-icon" aria-hidden="true"></span></button>
       </div>
       <div id="list" class="list"></div>
     </div>
@@ -193,7 +213,6 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     const post = (message) => vscode.postMessage(message);
 
     $('browse').addEventListener('click', () => post({ type: 'browse' }));
-    $('read').addEventListener('click', () => post({ type: 'readChanges' }));
     $('load').addEventListener('click', () => post({ type: 'load' }));
     $('all').addEventListener('click', () => post({ type: 'selectAll', checked: true }));
     $('none').addEventListener('click', () => post({ type: 'selectAll', checked: false }));
@@ -215,7 +234,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
 
     function setDisabled(loading, windows) {
       const off = loading || !windows;
-      for (const id of ['path', 'browse', 'base', 'read', 'all', 'none']) {
+      for (const id of ['path', 'browse', 'base', 'all', 'none']) {
         $(id).disabled = off;
       }
     }
@@ -288,10 +307,10 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
       const checked = (state.files || []).filter((f) => f.checked).length;
       const load = $('load');
       load.textContent = checked > 0 ? 'Загрузить (' + checked + ')' : 'Загрузить';
-      const reading = !!state.reading;
-      $('read-icon').classList.toggle('spin', reading);
       setDisabled(!!state.loading, !!state.windows);
-      if (reading) $('read').disabled = true;
+      const hasFiles = (state.files || []).length > 0;
+      $('all').hidden = !hasFiles;
+      $('none').hidden = !hasFiles;
       if (!state.bases.length) base.disabled = true;
       load.disabled = !!state.loading || !state.windows || checked === 0 || !state.bases.length;
       document.querySelectorAll('#list input').forEach((el) => { el.disabled = !!state.loading; });

@@ -2,7 +2,7 @@
   "name": "onec-loader",
   "displayName": "1C: Loader",
   "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С из боковой панели",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "icon": "media/icon.png",
   "publisher": "unchnm",
   "license": "MIT",
@@ -18,14 +18,15 @@
   "main": "./out/extension.js",
   "activationEvents": [
     "onView:onecLoader.panel",
-    "onCommand:onecLoader.show"
+    "onCommand:onecLoader.show",
+    "onCommand:onecLoader.refresh"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "onec-loader",
-          "title": "1C: Loader",
+          "title": "1C",
           "icon": "$(onec-loader-logo)"
         }
       ]
@@ -35,7 +36,7 @@
         {
           "type": "webview",
           "id": "onecLoader.panel",
-          "name": "Загрузка изменений"
+          "name": "Loader"
         }
       ]
     },
@@ -44,8 +45,23 @@
         "command": "onecLoader.show",
         "title": "Открыть загрузку изменений",
         "category": "1C"
+      },
+      {
+        "command": "onecLoader.refresh",
+        "title": "Обновить",
+        "category": "1C",
+        "icon": "$(refresh)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "onecLoader.refresh",
+          "when": "view == onecLoader.panel",
+          "group": "navigation"
+        }
+      ]
+    },
     "icons": {
       "onec-loader-logo": {
         "description": "1C Loader logo",

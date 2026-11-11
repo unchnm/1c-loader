@@ -135,6 +135,38 @@ export function tempLoadPaths(): { listFile: string; logFile: string } {
   };
 }
 
+export function clearRepositoryLog(repositoryRoot: string): void {
+  if (!repositoryRoot) {
+    return;
+  }
+  try {
+    const target = path.join(repositoryRoot, '.1c-log.txt');
+    if (fs.existsSync(target)) {
+      fs.unlinkSync(target);
+    }
+  } catch {
+    // старый лог не должен блокировать новую загрузку
+  }
+}
+
+export function copyFailureLog(logPath: string, repositoryRoot: string, fallbackText: string): void {
+  if (!repositoryRoot) {
+    return;
+  }
+  try {
+    const target = path.join(repositoryRoot, '.1c-log.txt');
+    if (logPath && fs.existsSync(logPath) && fs.statSync(logPath).size > 0) {
+      fs.copyFileSync(logPath, target);
+      return;
+    }
+    if (fallbackText) {
+      fs.writeFileSync(target, `${fallbackText}\r\n`, 'utf8');
+    }
+  } catch {
+    // запись диагностического лога не должна скрывать исходную ошибку загрузки
+  }
+}
+
 export function copyMismatchLog(logPath: string): void {
   if (!logPath || !fs.existsSync(logPath)) {
     return;

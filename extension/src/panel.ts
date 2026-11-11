@@ -13,6 +13,8 @@ import {
 import { infobaseLabel, platformVersionOf, readIbases } from './ibases';
 import {
   configuratorBusyMessage,
+  clearRepositoryLog,
+  copyFailureLog,
   copyMismatchLog,
   openConfigurator,
   readLogText,
@@ -34,6 +36,7 @@ function showToast(text: string, ms: number): void {
 }
 
 interface LoadContext {
+  gitRoot: string;
   xmlDir: string;
   relFiles: string[];
   listFile: string;
@@ -58,11 +61,10 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private loadGen = 0;
   private settledGen = -1;
   private versionRetried = false;
-  private loadTicks = 0;
-  private timer: NodeJS.Timeout | null = null;
   private proc: ChildProcess | null = null;
   private loadCtx: LoadContext | null = null;
   private loadingExe = '';
+  private progressDone: (() => void) | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -127,6 +129,32 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
 
   private postState(): void {
     void this.view?.webview.postMessage({ type: 'state', state: this.state() });
+  }
+
+  public refresh(): void {
+    if (process.platform !== 'win32') {
+      return;
+    }
+    void this.readChanges();
+  }
+
+  private startProgress(): void {
+    this.stopProgress();
+    let resolve!: () => void;
+    const pending = new Promise<void>(done => {
+      resolve = done;
+    });
+    this.progressDone = resolve;
+    void vscode.window.withProgress(
+      { location: { viewId: LoaderViewProvider.viewType }, cancellable: false },
+      () => pending
+    );
+  }
+
+  private stopProgress(): void {
+    const resolve = this.progressDone;
+    this.progressDone = null;
+    resolve?.();
   }
 
   private setStatus(text: string, tone: StatusTone): void {
@@ -248,6 +276,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     this.files = [];
     this.foundText = '';
     this.foundTone = 'muted';
+    this.startProgress();
     this.postState();
     try {
       const folder = this.projectPath.trim();
@@ -278,6 +307,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       }
     } finally {
       this.reading = false;
+      this.stopProgress();
       this.postState();
     }
   }
@@ -306,37 +336,54 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     const relFiles = toLoadRelativePaths(selected, subPath);
     const base = this.bases[this.selectedIndex];
     const required = platformVersionOf(base);
+
+    // Показываем системный progress до долгих проверок платформы и конфигуратора.
+    this.loading = true;
+    this.versionRetried = false;
+    this.loadingExe = '';
+    this.statusText = '';
+    this.statusTone = 'muted';
+    this.startProgress();
+    this.postState();
+
     const platform = await find1CExecutable(required);
     if (!platform.path) {
+      this.loading = false;
+      this.stopProgress();
+      this.postState();
       void vscode.window.showErrorMessage('1cv8.exe не найден. Установите платформу 1С:Предприятие.');
       return;
     }
     const busy = await configuratorBusyMessage(base);
     if (busy) {
+      this.loading = false;
+      this.stopProgress();
+      this.postState();
       showToast(busy, 3000);
       return;
     }
-    if (platform.warning) {
-      showToast(`Платформа: ${platform.matchedVersion}. ${platform.warning}`, 3000);
+    try {
+      const paths = tempLoadPaths();
+      clearRepositoryLog(gitRoot);
+      writeListFile(paths.listFile, relFiles);
+      this.loadCtx = {
+        gitRoot,
+        xmlDir,
+        relFiles,
+        listFile: paths.listFile,
+        logFile: paths.logFile,
+        base
+      };
+      this.loadingExe = platform.path;
+      this.spawnLoad(platform.path);
+    } catch (error) {
+      this.loading = false;
+      this.stopProgress();
+      this.proc = null;
+      this.loadCtx = null;
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus(`Ошибка подготовки загрузки: ${message}`, 'error');
     }
-    const paths = tempLoadPaths();
-    writeListFile(paths.listFile, relFiles);
-    this.loadCtx = {
-      xmlDir,
-      relFiles,
-      listFile: paths.listFile,
-      logFile: paths.logFile,
-      base
-    };
-    this.loading = true;
-    this.versionRetried = false;
-    this.loadingExe = platform.path;
-    this.loadTicks = 0;
-    const verNote = required
-      ? `Платформа: ${required} → ${platform.matchedVersion}. Подготовка...`
-      : `Платформа: ${platform.matchedVersion}. Подготовка...`;
-    this.setStatus(verNote, 'progress');
-    this.spawnLoad(platform.path);
   }
 
   private spawnLoad(exePath: string): void {
@@ -366,16 +413,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.proc = proc;
-    this.setStatus('Загрузка запущена...', 'progress');
-    this.stopTimer();
-    this.timer = setInterval(() => {
-      if (!this.loading || gen !== this.loadGen) {
-        return;
-      }
-      this.loadTicks++;
-      const dots = '.'.repeat((this.loadTicks % 3) + 1);
-      this.setStatus(`Загрузка${dots}  (${this.loadTicks}с)`, 'progress');
-    }, 1000);
     proc.on('error', err => {
       if (gen === this.loadGen) {
         void this.finishLoad(gen, -1, err.message);
@@ -390,17 +427,11 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
 
   private failStart(message: string): void {
     this.cleanupFiles();
+    this.stopProgress();
     this.loading = false;
     this.proc = null;
     this.loadCtx = null;
     this.setStatus(`Ошибка запуска загрузки: ${message}`, 'error');
-  }
-
-  private stopTimer(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
   }
 
   private cleanupFiles(): void {
@@ -424,7 +455,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.settledGen = gen;
-    this.stopTimer();
     const ctx = this.loadCtx;
     const mismatch = ctx ? readVersionMismatch(ctx.logFile) : null;
     let code = exitCode;
@@ -437,22 +467,27 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       if (retry.path && !retry.usedFallback && !same) {
         this.versionRetried = true;
         this.loadingExe = retry.path;
-        this.loadTicks = 0;
-        this.setStatus(`Сервер ${mismatch.server}. Повтор клиентом ${retry.matchedVersion}...`, 'progress');
         this.spawnLoad(retry.path);
         return;
       }
     }
     const logText = ctx ? readLogText(ctx.logFile) : '';
     if (code !== 0 && ctx) {
-      copyMismatchLog(ctx.logFile);
+      const fallback = spawnError
+        ? `Ошибка запуска загрузки: ${spawnError}`
+        : `Загрузка завершилась с ошибкой.\r\nКод возврата: ${code}`;
+      copyFailureLog(ctx.logFile, ctx.gitRoot, fallback);
+      if (mismatch) {
+        copyMismatchLog(ctx.logFile);
+      }
     }
     this.cleanupFiles();
+    this.stopProgress();
     this.loading = false;
     this.proc = null;
     this.loadCtx = null;
     if (code === 0 && !spawnError) {
-      this.setStatus('Загрузка завершена успешно!', 'success');
+      this.postState();
       showToast('Загрузка завершена успешно!', 2000);
       if (ctx && this.loadingExe) {
         openConfigurator(this.loadingExe, ctx.base);
