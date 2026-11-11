@@ -30,6 +30,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   html, body { height: 100%; margin: 0; }
   body {
     box-sizing: border-box;
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -38,6 +39,33 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     background: var(--vscode-sideBar-background);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
+  }
+  .progress-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .progress-line::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 30%;
+    background: var(--vscode-progressBar-background, #0e70c0);
+    animation: progress-line 1.2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .progress-line::before { animation: none; left: 35%; }
+  }
+  @keyframes progress-line {
+    0% { transform: translateX(-110%); }
+    50% { transform: translateX(170%); }
+    100% { transform: translateX(360%); }
   }
   .unsupported {
     padding: 8px;
@@ -75,23 +103,29 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
   .icon-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
   .selection-icon {
     position: relative;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     display: inline-block;
   }
-  .selection-icon > .codicon {
+  .selection-icon::before {
+    content: "";
     position: absolute;
-    inset: 0;
+    inset: 1px;
+    box-sizing: border-box;
+    border: 1px solid currentColor;
+    border-radius: 1px;
   }
-  .selection-icon > .codicon-check {
-    font-size: 12px;
-    line-height: 16px;
-    left: 2px;
-    top: 0;
-    right: auto;
-    bottom: auto;
-    width: 12px;
-    height: 16px;
+  .selection-icon-checked::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 6px;
+    height: 3px;
+    box-sizing: border-box;
+    border-left: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
   }
   #browse, .select-chevron {
     position: absolute;
@@ -116,6 +150,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     min-height: 0;
   }
   .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; height: 22px; min-width: 0; }
+  .toolbar button[hidden] { display: none; }
   .list {
     flex: 1;
     min-height: 0;
@@ -172,6 +207,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
 </style>
 </head>
 <body>
+  <div id="progress-line" class="progress-line" hidden aria-hidden="true"></div>
   <div id="unsupported" class="unsupported" hidden>Загрузка доступна только в Windows: нужны 1cv8.exe и список баз ibases.v8i.</div>
   <div id="form" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;">
     <div>
@@ -192,8 +228,8 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
     <div class="changes">
       <div class="toolbar">
         <div id="status" class="status"></div>
-        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="selection-icon" aria-hidden="true"><span class="codicon codicon-primitive-square"></span><span class="codicon codicon-check"></span></span></button>
-        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="codicon codicon-primitive-square"></span></button>
+        <button id="all" class="icon-btn" type="button" title="Выделить все"><span class="selection-icon selection-icon-checked" aria-hidden="true"></span></button>
+        <button id="none" class="icon-btn" type="button" title="Снять выделение"><span class="selection-icon" aria-hidden="true"></span></button>
       </div>
       <div id="list" class="list"></div>
     </div>
@@ -301,6 +337,7 @@ export function webviewHtml(nonce: string, fontUri: string, cspSource: string): 
       load.textContent = checked > 0 ? 'Загрузить (' + checked + ')' : 'Загрузить';
       setDisabled(!!state.loading, !!state.windows);
       const hasFiles = (state.files || []).length > 0;
+      $('progress-line').hidden = !state.loading && !state.reading;
       $('all').hidden = !hasFiles;
       $('none').hidden = !hasFiles;
       if (!state.bases.length) base.disabled = true;

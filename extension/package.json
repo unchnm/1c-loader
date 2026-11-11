@@ -26,7 +26,7 @@
       "activitybar": [
         {
           "id": "onec-loader",
-          "title": "1C: Loader",
+          "title": "1C",
           "icon": "$(onec-loader-logo)"
         }
       ]
@@ -36,7 +36,7 @@
         {
           "type": "webview",
           "id": "onecLoader.panel",
-          "name": ""
+          "name": "Loader"
         }
       ]
     },
@@ -48,7 +48,7 @@
       },
       {
         "command": "onecLoader.refresh",
-        "title": "Обновить изменения",
+        "title": "Обновить",
         "category": "1C",
         "icon": "$(refresh)"
       }
