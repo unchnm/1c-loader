@@ -77,12 +77,13 @@
         {
           "command": "onecLoader.refresh",
           "when": "view == onecLoader.panel",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
           "submenu": "onecLoader.settingsMenu",
+          "icon": "$(kebab-vertical)",
           "when": "view == onecLoader.panel",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "onecLoader.settingsMenu": [
