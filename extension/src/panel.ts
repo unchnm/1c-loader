@@ -69,6 +69,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.onlyUncommitted = this.context.workspaceState.get<boolean>('onlyUncommitted', true);
+    void vscode.commands.executeCommand('setContext', 'onecLoader.onlyUncommitted', this.onlyUncommitted);
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -142,32 +143,13 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     void this.readChanges();
   }
 
-  public async showSettings(): Promise<void> {
-    if (this.loading || this.reading) {
+  public async setOnlyUncommitted(value: boolean): Promise<void> {
+    if (this.loading || this.reading || this.onlyUncommitted === value) {
       return;
     }
-    const picked = await vscode.window.showQuickPick(
-      [
-        {
-          label: 'Показывать только незакоммиченные изменения',
-          picked: this.onlyUncommitted,
-          description: this.onlyUncommitted ? 'Включено' : 'Выключено'
-        }
-      ],
-      {
-        canPickMany: true,
-        placeHolder: 'Настройки списка изменений'
-      }
-    );
-    if (picked === undefined) {
-      return;
-    }
-    const next = picked.length > 0;
-    if (next === this.onlyUncommitted) {
-      return;
-    }
-    this.onlyUncommitted = next;
-    await this.context.workspaceState.update('onlyUncommitted', next);
+    this.onlyUncommitted = value;
+    await this.context.workspaceState.update('onlyUncommitted', value);
+    void vscode.commands.executeCommand('setContext', 'onecLoader.onlyUncommitted', value);
     await this.readChanges();
   }
 
