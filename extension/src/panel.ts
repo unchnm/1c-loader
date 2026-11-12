@@ -157,9 +157,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     await this.readChanges();
   }
 
-  public async toggleOnlyUncommitted(): Promise<void> {
-    await this.setOnlyUncommitted(!this.onlyUncommitted);
-  }
 
   private startProgress(): void {
     this.stopProgress();

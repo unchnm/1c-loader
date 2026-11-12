@@ -16,8 +16,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('onecLoader.refresh', () => {
       provider.refresh();
     }),
-    vscode.commands.registerCommand('onecLoader.toggleOnlyUncommitted', () => {
-      void provider.toggleOnlyUncommitted();
+    vscode.commands.registerCommand('onecLoader.enableOnlyUncommitted', () => {
+      void provider.setOnlyUncommitted(true);
+    }),
+    vscode.commands.registerCommand('onecLoader.disableOnlyUncommitted', () => {
+      void provider.setOnlyUncommitted(false);
     })
   );
 }
