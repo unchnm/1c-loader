@@ -39,4 +39,5 @@ export interface PanelState {
   statusTone: StatusTone;
   loading: boolean;
   reading: boolean;
+  onlyUncommitted: boolean;
 }

@@ -6,7 +6,7 @@ import { ChildProcess } from 'child_process';
 import {
   findGitRoot,
   findXmlRoot,
-  getGitChangedFiles,
+  getGitFiles,
   subPathOf,
   toLoadRelativePaths
 } from './changes';
@@ -58,6 +58,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private statusTone: StatusTone = 'muted';
   private loading = false;
   private reading = false;
+  private onlyUncommitted = true;
   private loadGen = 0;
   private settledGen = -1;
   private versionRetried = false;
@@ -66,7 +67,9 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private loadingExe = '';
   private progressDone: (() => void) | null = null;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.onlyUncommitted = this.context.workspaceState.get<boolean>('onlyUncommitted', true);
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -123,7 +126,8 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       statusText: this.statusText,
       statusTone: this.statusTone,
       loading: this.loading,
-      reading: this.reading
+      reading: this.reading,
+      onlyUncommitted: this.onlyUncommitted
     };
   }
 
@@ -136,6 +140,35 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     void this.readChanges();
+  }
+
+  public async showSettings(): Promise<void> {
+    if (this.loading || this.reading) {
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      [
+        {
+          label: 'Показывать только незакоммиченные изменения',
+          picked: this.onlyUncommitted,
+          description: this.onlyUncommitted ? 'Включено' : 'Выключено'
+        }
+      ],
+      {
+        canPickMany: true,
+        placeHolder: 'Настройки списка изменений'
+      }
+    );
+    if (picked === undefined) {
+      return;
+    }
+    const next = picked.length > 0;
+    if (next === this.onlyUncommitted) {
+      return;
+    }
+    this.onlyUncommitted = next;
+    await this.context.workspaceState.update('onlyUncommitted', next);
+    await this.readChanges();
   }
 
   private startProgress(): void {
@@ -295,7 +328,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       }
       const xmlDir = findXmlRoot(folder) ?? folder;
       const subPath = subPathOf(gitRoot, xmlDir);
-      const names = await getGitChangedFiles(gitRoot, subPath);
+      const names = await getGitFiles(gitRoot, subPath, this.onlyUncommitted);
       this.files = names.map(name => ({ path: name, checked: true }));
       this.setStatus('', 'muted');
     } catch (error) {

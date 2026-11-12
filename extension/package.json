@@ -2,7 +2,7 @@
   "name": "onec-loader",
   "displayName": "1C: Loader",
   "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С из боковой панели",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "icon": "media/icon.png",
   "publisher": "unchnm",
   "license": "MIT",
@@ -19,7 +19,8 @@
   "activationEvents": [
     "onView:onecLoader.panel",
     "onCommand:onecLoader.show",
-    "onCommand:onecLoader.refresh"
+    "onCommand:onecLoader.refresh",
+    "onCommand:onecLoader.settings"
   ],
   "contributes": {
     "viewsContainers": {
@@ -51,12 +52,23 @@
         "title": "Обновить",
         "category": "1C",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "onecLoader.settings",
+        "title": "Настройки списка изменений",
+        "category": "1C",
+        "icon": "$(kebab-vertical)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "onecLoader.refresh",
+          "when": "view == onecLoader.panel",
+          "group": "navigation"
+        },
+        {
+          "command": "onecLoader.settings",
           "when": "view == onecLoader.panel",
           "group": "navigation"
         }

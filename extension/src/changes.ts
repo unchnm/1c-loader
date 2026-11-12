@@ -141,3 +141,58 @@ export async function getGitChangedFiles(gitRoot: string, subPath = ''): Promise
   }
   return filterChangedNames(pathsFromStatus(result.lines), subPath);
 }
+
+async function gitRef(gitRoot: string, args: string[]): Promise<string | null> {
+  const result = await gitOutput(gitRoot, args);
+  return result.ok && result.lines[0] ? result.lines[0].trim() : null;
+}
+
+async function committedLogArgs(gitRoot: string): Promise<string[]> {
+  const branch = await gitRef(gitRoot, ['branch', '--show-current']);
+  const mainRef =
+    (await gitRef(gitRoot, ['rev-parse', '--verify', 'origin/main'])) ??
+    (await gitRef(gitRoot, ['rev-parse', '--verify', 'main'])) ??
+    (await gitRef(gitRoot, ['rev-parse', '--verify', 'origin/master'])) ??
+    (await gitRef(gitRoot, ['rev-parse', '--verify', 'master']));
+
+  const args = ['--no-optional-locks', 'log', '--format=', '--name-only', '--diff-filter=ACMR'];
+  if (mainRef && branch && branch !== 'main' && branch !== 'master') {
+    const mergeBase = await gitRef(gitRoot, ['merge-base', 'HEAD', mainRef]);
+    if (mergeBase) {
+      args.push(`${mergeBase}..HEAD`);
+    }
+  }
+  return args;
+}
+
+/**
+ * Returns XML/BSL files changed in the current branch and in the working tree.
+ * The branch history is limited to commits after the detected main/master
+ * branch, while the default mode keeps the existing status-only behavior.
+ */
+export async function getGitFiles(gitRoot: string, subPath = '', onlyUncommitted = true): Promise<string[]> {
+  const uncommitted = await getGitChangedFiles(gitRoot, subPath);
+  if (onlyUncommitted) {
+    return uncommitted;
+  }
+
+  const args = await committedLogArgs(gitRoot);
+  const prefix = subPath.replace(/\\/g, '/').replace(/\/$/, '');
+  if (prefix) {
+    args.push('--', prefix);
+  }
+  const result = await gitOutput(gitRoot, args);
+  if (!result.ok) {
+    if (result.code === 'ENOENT') {
+      throw new Error('ENOENT');
+    }
+    throw new Error('git log error: ' + result.error);
+  }
+  return filterChangedNames([...result.lines, ...uncommitted], subPath).filter(file => {
+    try {
+      return fs.existsSync(path.join(gitRoot, ...file.split('/')));
+    } catch {
+      return false;
+    }
+  });
+}
