@@ -63,9 +63,8 @@
       },
       {
         "command": "onecLoader.onlyUncommittedChecked",
-        "title": "Только незакоммиченные",
-        "category": "1C",
-        "icon": "$(check)"
+        "title": "✓ Только незакоммиченные",
+        "category": "1C"
       },
       {
         "command": "onecLoader.withPullRequestChangesUnchecked",
@@ -74,9 +73,8 @@
       },
       {
         "command": "onecLoader.withPullRequestChangesChecked",
-        "title": "Все изменения",
-        "category": "1C",
-        "icon": "$(check)"
+        "title": "✓ Все изменения",
+        "category": "1C"
       }
     ],
     "submenus": [
