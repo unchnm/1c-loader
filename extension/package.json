@@ -20,8 +20,7 @@
     "onView:onecLoader.panel",
     "onCommand:onecLoader.show",
     "onCommand:onecLoader.refresh",
-    "onCommand:onecLoader.enableOnlyUncommitted",
-    "onCommand:onecLoader.disableOnlyUncommitted"
+    "onCommand:onecLoader.toggleOnlyUncommitted"
   ],
   "contributes": {
     "viewsContainers": {
@@ -55,12 +54,7 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "onecLoader.enableOnlyUncommitted",
-        "title": "$(check) Показывать только незакоммиченные изменения",
-        "category": "1C"
-      },
-      {
-        "command": "onecLoader.disableOnlyUncommitted",
+        "command": "onecLoader.toggleOnlyUncommitted",
         "title": "Показывать только незакоммиченные изменения",
         "category": "1C"
       }
@@ -69,7 +63,7 @@
       {
         "id": "onecLoader.settingsMenu",
         "label": "Настройки списка изменений",
-        "icon": "$(kebab-vertical)"
+        "icon": "$(kebab-horizontal)"
       }
     ],
     "menus": {
@@ -81,20 +75,16 @@
         },
         {
           "submenu": "onecLoader.settingsMenu",
-          "icon": "$(kebab-vertical)",
+          "icon": "$(kebab-horizontal)",
           "when": "view == onecLoader.panel",
           "group": "navigation@2"
         }
       ],
       "onecLoader.settingsMenu": [
         {
-          "command": "onecLoader.enableOnlyUncommitted",
-          "when": "view == onecLoader.panel && onecLoader.onlyUncommitted",
-          "group": "navigation"
-        },
-        {
-          "command": "onecLoader.disableOnlyUncommitted",
-          "when": "view == onecLoader.panel && !onecLoader.onlyUncommitted",
+          "command": "onecLoader.toggleOnlyUncommitted",
+          "when": "view == onecLoader.panel",
+          "toggled": "onecLoader.onlyUncommitted",
           "group": "navigation"
         }
       ]

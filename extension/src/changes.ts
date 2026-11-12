@@ -147,32 +147,43 @@ async function gitRef(gitRoot: string, args: string[]): Promise<string | null> {
   return result.ok && result.lines[0] ? result.lines[0].trim() : null;
 }
 
+async function gitRefs(gitRoot: string): Promise<string[]> {
+  const result = await gitOutput(gitRoot, [
+    'for-each-ref',
+    '--format=%(refname)',
+    'refs/heads',
+    'refs/remotes'
+  ]);
+  return result.ok ? result.lines.map(ref => ref.trim()).filter(Boolean) : [];
+}
+
 async function committedLogArgs(gitRoot: string): Promise<string[] | null> {
   const branch = await gitRef(gitRoot, ['branch', '--show-current']);
-  const mainRef =
-    (await gitRef(gitRoot, ['rev-parse', '--verify', 'origin/main'])) ??
-    (await gitRef(gitRoot, ['rev-parse', '--verify', 'main'])) ??
-    (await gitRef(gitRoot, ['rev-parse', '--verify', 'origin/master'])) ??
-    (await gitRef(gitRoot, ['rev-parse', '--verify', 'master']));
+  const upstream = await gitRef(gitRoot, ['rev-parse', '--symbolic-full-name', '@{upstream}']);
+  const refs = await gitRefs(gitRoot);
+  const currentRefs = new Set<string>();
+  if (branch) {
+    currentRefs.add(`refs/heads/${branch}`);
+  }
+  if (upstream) {
+    currentRefs.add(upstream);
+  }
 
-  // На основной ветке нет собственных изменений относительно неё самой.
-  // При отсутствии main/master нельзя безопасно считать всю историю файлами
-  // текущей ветки: это приводит к показу файлов из чужой истории.
-  if (!mainRef || !branch || branch === 'main' || branch === 'master') {
+  // Все refs, кроме текущей ветки и её remote-tracking ref, являются
+  // кандидатами на целевую ветку PR. Такой диапазон не зависит от имени
+  // основной ветки (main, master, develop и т. п.) и не включает её историю.
+  const targetRefs = refs.filter(ref => !currentRefs.has(ref));
+  if (targetRefs.length === 0) {
     return null;
   }
-  const mergeBase = await gitRef(gitRoot, ['merge-base', 'HEAD', mainRef]);
-  if (!mergeBase) {
-    return null;
-  }
-  const args = ['--no-optional-locks', 'log', '--format=', '--name-only', '--diff-filter=ACMR', `${mergeBase}..HEAD`];
-  return args;
+  return ['--no-optional-locks', 'log', '--format=', '--name-only', '--diff-filter=ACMR', 'HEAD', '--not', ...targetRefs];
 }
 
 /**
  * Returns XML/BSL files changed in the current branch and in the working tree.
- * The branch history is limited to commits after the detected main/master
- * branch, while the default mode keeps the existing status-only behavior.
+ * The committed part is limited to commits reachable from HEAD but not from
+ * any other local or remote branch, which matches the commit set of a PR.
+ * The default mode keeps the existing status-only behavior.
  */
 export async function getGitFiles(gitRoot: string, subPath = '', onlyUncommitted = true): Promise<string[]> {
   const uncommitted = await getGitChangedFiles(gitRoot, subPath);

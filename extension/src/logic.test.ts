@@ -118,7 +118,7 @@ test('расширенный список берет коммиты текуще
   }
 });
 
-test('без основной ветки расширенный режим не подмешивает всю историю репозитория', async () => {
+test('целевая ветка PR может называться не main или master', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-no-main-'));
   const git = (args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
   try {
@@ -135,7 +135,7 @@ test('без основной ветки расширенный режим не 
     git(['commit', '-qm', 'branch']);
     fs.writeFileSync(path.join(root, 'working.xml'), '<working/>');
 
-    assert.deepStrictEqual(await getGitFiles(root, '', false), ['working.xml']);
+    assert.deepStrictEqual(await getGitFiles(root, '', false), ['branch.xml', 'working.xml']);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
