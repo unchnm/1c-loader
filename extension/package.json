@@ -20,8 +20,10 @@
     "onView:onecLoader.panel",
     "onCommand:onecLoader.show",
     "onCommand:onecLoader.refresh",
-    "onCommand:onecLoader.enableOnlyUncommitted",
-    "onCommand:onecLoader.disableOnlyUncommitted"
+    "onCommand:onecLoader.onlyUncommittedUnchecked",
+    "onCommand:onecLoader.onlyUncommittedChecked",
+    "onCommand:onecLoader.withPullRequestChangesUnchecked",
+    "onCommand:onecLoader.withPullRequestChangesChecked"
   ],
   "contributes": {
     "viewsContainers": {
@@ -55,21 +57,37 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "onecLoader.enableOnlyUncommitted",
+        "command": "onecLoader.onlyUncommittedUnchecked",
         "title": "Показывать только незакоммиченные изменения",
         "category": "1C"
       },
       {
-        "command": "onecLoader.disableOnlyUncommitted",
-        "title": "$(check) Показывать только незакоммиченные изменения",
+        "command": "onecLoader.onlyUncommittedChecked",
+        "title": "Показывать только незакоммиченные изменения",
+        "category": "1C",
+        "icon": "$(check)"
+      },
+      {
+        "command": "onecLoader.withPullRequestChangesUnchecked",
+        "title": "Показывать изменения из коммитов Pull Request",
         "category": "1C"
+      },
+      {
+        "command": "onecLoader.withPullRequestChangesChecked",
+        "title": "Показывать изменения из коммитов Pull Request",
+        "category": "1C",
+        "icon": "$(check)"
       }
     ],
     "submenus": [
       {
-        "id": "onecLoader.settingsMenu",
-        "label": "Настройки списка изменений",
+        "id": "onecLoader.fileListMenu",
+        "label": "Дополнительные действия",
         "icon": "$(kebab-horizontal)"
+      },
+      {
+        "id": "onecLoader.fileListModeMenu",
+        "label": "Список файлов"
       }
     ],
     "menus": {
@@ -80,21 +98,36 @@
           "group": "navigation@1"
         },
         {
-          "submenu": "onecLoader.settingsMenu",
-          "icon": "$(kebab-horizontal)",
+          "submenu": "onecLoader.fileListMenu",
           "when": "view == onecLoader.panel",
           "group": "navigation@2"
         }
       ],
-      "onecLoader.settingsMenu": [
+      "onecLoader.fileListMenu": [
         {
-          "command": "onecLoader.enableOnlyUncommitted",
+          "submenu": "onecLoader.fileListModeMenu",
+          "group": "navigation"
+        }
+      ],
+      "onecLoader.fileListModeMenu": [
+        {
+          "command": "onecLoader.onlyUncommittedUnchecked",
           "when": "view == onecLoader.panel && !onecLoader.onlyUncommitted",
           "group": "navigation"
         },
         {
-          "command": "onecLoader.disableOnlyUncommitted",
+          "command": "onecLoader.onlyUncommittedChecked",
           "when": "view == onecLoader.panel && onecLoader.onlyUncommitted",
+          "group": "navigation"
+        },
+        {
+          "command": "onecLoader.withPullRequestChangesUnchecked",
+          "when": "view == onecLoader.panel && onecLoader.onlyUncommitted",
+          "group": "navigation"
+        },
+        {
+          "command": "onecLoader.withPullRequestChangesChecked",
+          "when": "view == onecLoader.panel && !onecLoader.onlyUncommitted",
           "group": "navigation"
         }
       ]
