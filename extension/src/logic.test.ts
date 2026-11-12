@@ -114,6 +114,29 @@ test('расширенный список берет коммиты текуще
   }
 });
 
+test('без основной ветки расширенный режим не подмешивает всю историю репозитория', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-no-main-'));
+  const git = (args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  try {
+    git(['init', '-q']);
+    git(['config', 'user.email', 'test@example.com']);
+    git(['config', 'user.name', 'Test']);
+    fs.writeFileSync(path.join(root, 'base.xml'), '<base/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'base']);
+    git(['branch', '-m', 'trunk']);
+    git(['checkout', '-qb', '727']);
+    fs.writeFileSync(path.join(root, 'branch.xml'), '<branch/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'branch']);
+    fs.writeFileSync(path.join(root, 'working.xml'), '<working/>');
+
+    assert.deepStrictEqual(await getGitFiles(root, '', false), ['working.xml']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('корень Configuration.xml ищется в src', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-'));
   fs.mkdirSync(path.join(root, 'src'), { recursive: true });

@@ -147,7 +147,7 @@ async function gitRef(gitRoot: string, args: string[]): Promise<string | null> {
   return result.ok && result.lines[0] ? result.lines[0].trim() : null;
 }
 
-async function committedLogArgs(gitRoot: string): Promise<string[]> {
+async function committedLogArgs(gitRoot: string): Promise<string[] | null> {
   const branch = await gitRef(gitRoot, ['branch', '--show-current']);
   const mainRef =
     (await gitRef(gitRoot, ['rev-parse', '--verify', 'origin/main'])) ??
@@ -155,13 +155,17 @@ async function committedLogArgs(gitRoot: string): Promise<string[]> {
     (await gitRef(gitRoot, ['rev-parse', '--verify', 'origin/master'])) ??
     (await gitRef(gitRoot, ['rev-parse', '--verify', 'master']));
 
-  const args = ['--no-optional-locks', 'log', '--format=', '--name-only', '--diff-filter=ACMR'];
-  if (mainRef && branch && branch !== 'main' && branch !== 'master') {
-    const mergeBase = await gitRef(gitRoot, ['merge-base', 'HEAD', mainRef]);
-    if (mergeBase) {
-      args.push(`${mergeBase}..HEAD`);
-    }
+  // На основной ветке нет собственных изменений относительно неё самой.
+  // При отсутствии main/master нельзя безопасно считать всю историю файлами
+  // текущей ветки: это приводит к показу файлов из чужой истории.
+  if (!mainRef || !branch || branch === 'main' || branch === 'master') {
+    return null;
   }
+  const mergeBase = await gitRef(gitRoot, ['merge-base', 'HEAD', mainRef]);
+  if (!mergeBase) {
+    return null;
+  }
+  const args = ['--no-optional-locks', 'log', '--format=', '--name-only', '--diff-filter=ACMR', `${mergeBase}..HEAD`];
   return args;
 }
 
@@ -177,6 +181,9 @@ export async function getGitFiles(gitRoot: string, subPath = '', onlyUncommitted
   }
 
   const args = await committedLogArgs(gitRoot);
+  if (!args) {
+    return uncommitted;
+  }
   const prefix = subPath.replace(/\\/g, '/').replace(/\/$/, '');
   if (prefix) {
     args.push('--', prefix);
