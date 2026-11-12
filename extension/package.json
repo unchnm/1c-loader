@@ -58,23 +58,23 @@
       },
       {
         "command": "onecLoader.onlyUncommittedUnchecked",
-        "title": "Показывать только незакоммиченные изменения",
+        "title": "Только незакоммиченные",
         "category": "1C"
       },
       {
         "command": "onecLoader.onlyUncommittedChecked",
-        "title": "Показывать только незакоммиченные изменения",
+        "title": "Только незакоммиченные",
         "category": "1C",
         "icon": "$(check)"
       },
       {
         "command": "onecLoader.withPullRequestChangesUnchecked",
-        "title": "Показывать изменения из коммитов Pull Request",
+        "title": "Все изменения",
         "category": "1C"
       },
       {
         "command": "onecLoader.withPullRequestChangesChecked",
-        "title": "Показывать изменения из коммитов Pull Request",
+        "title": "Все изменения",
         "category": "1C",
         "icon": "$(check)"
       }
