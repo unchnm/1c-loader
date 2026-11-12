@@ -21,9 +21,7 @@
     "onCommand:onecLoader.show",
     "onCommand:onecLoader.refresh",
     "onCommand:onecLoader.onlyUncommittedUnchecked",
-    "onCommand:onecLoader.onlyUncommittedChecked",
-    "onCommand:onecLoader.withPullRequestChangesUnchecked",
-    "onCommand:onecLoader.withPullRequestChangesChecked"
+    "onCommand:onecLoader.onlyUncommittedChecked"
   ],
   "contributes": {
     "viewsContainers": {
@@ -64,16 +62,6 @@
       {
         "command": "onecLoader.onlyUncommittedChecked",
         "title": "✓ Только незакоммиченные",
-        "category": "1C"
-      },
-      {
-        "command": "onecLoader.withPullRequestChangesUnchecked",
-        "title": "Все изменения",
-        "category": "1C"
-      },
-      {
-        "command": "onecLoader.withPullRequestChangesChecked",
-        "title": "✓ Все изменения",
         "category": "1C"
       }
     ],
@@ -116,16 +104,6 @@
         {
           "command": "onecLoader.onlyUncommittedChecked",
           "when": "view == onecLoader.panel && onecLoader.onlyUncommitted",
-          "group": "navigation"
-        },
-        {
-          "command": "onecLoader.withPullRequestChangesUnchecked",
-          "when": "view == onecLoader.panel && onecLoader.onlyUncommitted",
-          "group": "navigation"
-        },
-        {
-          "command": "onecLoader.withPullRequestChangesChecked",
-          "when": "view == onecLoader.panel && !onecLoader.onlyUncommitted",
           "group": "navigation"
         }
       ]
