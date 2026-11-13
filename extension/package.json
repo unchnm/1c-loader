@@ -19,9 +19,7 @@
   "activationEvents": [
     "onView:onecLoader.panel",
     "onCommand:onecLoader.show",
-    "onCommand:onecLoader.refresh",
-    "onCommand:onecLoader.onlyUncommittedUnchecked",
-    "onCommand:onecLoader.onlyUncommittedChecked"
+    "onCommand:onecLoader.refresh"
   ],
   "contributes": {
     "viewsContainers": {
@@ -53,27 +51,6 @@
         "title": "Обновить",
         "category": "1C",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "onecLoader.onlyUncommittedUnchecked",
-        "title": "Только незакоммиченные",
-        "category": "1C"
-      },
-      {
-        "command": "onecLoader.onlyUncommittedChecked",
-        "title": "✓ Только незакоммиченные",
-        "category": "1C"
-      }
-    ],
-    "submenus": [
-      {
-        "id": "onecLoader.fileListMenu",
-        "label": "Дополнительные действия",
-        "icon": "$(kebab-horizontal)"
-      },
-      {
-        "id": "onecLoader.fileListModeMenu",
-        "label": "Список файлов"
       }
     ],
     "menus": {
@@ -82,31 +59,20 @@
           "command": "onecLoader.refresh",
           "when": "view == onecLoader.panel",
           "group": "navigation@1"
-        },
-        {
-          "submenu": "onecLoader.fileListMenu",
-          "when": "view == onecLoader.panel",
-          "group": "navigation@2"
-        }
-      ],
-      "onecLoader.fileListMenu": [
-        {
-          "submenu": "onecLoader.fileListModeMenu",
-          "group": "navigation"
-        }
-      ],
-      "onecLoader.fileListModeMenu": [
-        {
-          "command": "onecLoader.onlyUncommittedUnchecked",
-          "when": "view == onecLoader.panel && !onecLoader.onlyUncommitted",
-          "group": "navigation"
-        },
-        {
-          "command": "onecLoader.onlyUncommittedChecked",
-          "when": "view == onecLoader.panel && onecLoader.onlyUncommitted",
-          "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "1C: Loader",
+      "properties": {
+        "onecLoader.onlyUncommittedChanges": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "title": "Display only uncommitted working-tree changes",
+          "markdownDescription": "Показывает только файлы с незакоммиченными изменениями в рабочей копии Git.\n\nЕсли отключить настройку, список также включает XML/BSL-файлы из коммитов текущей ветки, отсутствующих в остальных локальных и remote-tracking ветках, и незакоммиченные изменения. Удалённые файлы исключаются, дубли удаляются."
+        }
+      }
     },
     "icons": {
       "onec-loader-logo": {

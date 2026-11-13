@@ -27,8 +27,6 @@ import { find1CExecutable } from './platform';
 import { FileItem, Infobase, PanelState, StatusTone } from './types';
 import { webviewHtml } from './webviewHtml';
 
-const ONLY_UNCOMMITTED_KEY = 'onlyUncommittedChanges';
-
 function showToast(text: string, ms: number): void {
   const title = text.replace(/\s*\n\s*/g, ' ').trim();
   void vscode.window.withProgress(
@@ -70,9 +68,31 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private progressDone: (() => void) | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    // Версия 0.3.0 с Quick Pick сохраняла значение под другим ключом. Не
-    // переносим его: после обновления настройка должна начинаться включённой.
-    this.onlyUncommitted = this.context.workspaceState.get<boolean>(ONLY_UNCOMMITTED_KEY, true);
+    this.onlyUncommitted = this.readOnlyUncommittedSetting();
+    this.updateOnlyUncommittedContext();
+    this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+      if (!event.affectsConfiguration('onecLoader.onlyUncommittedChanges')) {
+        return;
+      }
+      const next = this.readOnlyUncommittedSetting();
+      if (next === this.onlyUncommitted) {
+        return;
+      }
+      this.onlyUncommitted = next;
+      this.updateOnlyUncommittedContext();
+      if (process.platform === 'win32' && !this.loading && !this.reading) {
+        void this.readChanges();
+      } else {
+        this.postState();
+      }
+    }));
+  }
+
+  private readOnlyUncommittedSetting(): boolean {
+    return vscode.workspace.getConfiguration('onecLoader').get<boolean>('onlyUncommittedChanges', true);
+  }
+
+  private updateOnlyUncommittedContext(): void {
     void vscode.commands.executeCommand('setContext', 'onecLoader.onlyUncommitted', this.onlyUncommitted);
   }
 
@@ -131,8 +151,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       statusText: this.statusText,
       statusTone: this.statusTone,
       loading: this.loading,
-      reading: this.reading,
-      onlyUncommitted: this.onlyUncommitted
+      reading: this.reading
     };
   }
 
@@ -146,17 +165,6 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
     }
     void this.readChanges();
   }
-
-  public async setOnlyUncommitted(value: boolean): Promise<void> {
-    if (this.loading || this.reading || this.onlyUncommitted === value) {
-      return;
-    }
-    this.onlyUncommitted = value;
-    await this.context.workspaceState.update(ONLY_UNCOMMITTED_KEY, value);
-    void vscode.commands.executeCommand('setContext', 'onecLoader.onlyUncommitted', value);
-    await this.readChanges();
-  }
-
 
   private startProgress(): void {
     this.stopProgress();
