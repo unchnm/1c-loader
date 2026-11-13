@@ -1,9 +1,10 @@
 import * as assert from 'assert';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import test from 'node:test';
-import { filterChangedNames, findGitRoot, findXmlRoot, pathsFromStatus, subPathOf, toLoadRelativePaths } from './changes';
+import { filterChangedNames, findGitRoot, findXmlRoot, getGitFiles, pathsFromStatus, subPathOf, toLoadRelativePaths } from './changes';
 import { connectionToken, parseIbases, platformVersionOf } from './ibases';
 import { buildDesignerArgs, clearRepositoryLog, copyFailureLog } from './load';
 import { compareVersions, versionPrefixMatch } from './version';
@@ -71,6 +72,93 @@ test('git status: правки и новые файлы, без удалений
     'src/new.bsl',
     'README.md'
   ]);
+});
+
+test('расширенный список берет коммиты текущей ветки и незакоммиченные файлы без дублей', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-history-'));
+  const git = (args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  try {
+    git(['init', '-q']);
+    git(['config', 'user.email', 'test@example.com']);
+    git(['config', 'user.name', 'Test']);
+    fs.writeFileSync(path.join(root, 'main.xml'), '<main/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'main']);
+    git(['checkout', '-qb', 'feature']);
+    fs.writeFileSync(path.join(root, 'branch.xml'), '<branch/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'branch']);
+    fs.writeFileSync(path.join(root, 'second.bsl'), 'Процедура Тест(); КонецПроцедуры');
+    git(['add', '.']);
+    git(['commit', '-qm', 'second']);
+    fs.writeFileSync(path.join(root, 'foreign.xml'), '<foreign/>');
+    git(['add', '.']);
+    git(['-c', 'user.email=other@example.com', '-c', 'user.name=Other', 'commit', '-qm', 'foreign']);
+    fs.writeFileSync(path.join(root, 'deleted.xml'), '<deleted/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'add deleted']);
+    fs.rmSync(path.join(root, 'deleted.xml'));
+    git(['add', '.']);
+    git(['commit', '-qm', 'delete it']);
+    fs.writeFileSync(path.join(root, 'working.xml'), '<working/>');
+    fs.appendFileSync(path.join(root, 'branch.xml'), '<changed/>');
+
+    assert.deepStrictEqual(await getGitFiles(root, '', false), [
+      'branch.xml',
+      'foreign.xml',
+      'second.bsl',
+      'working.xml'
+    ]);
+    assert.deepStrictEqual(await getGitFiles(root, '', true), [
+      'branch.xml',
+      'working.xml'
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('целевая ветка PR может называться не main или master', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-no-main-'));
+  const git = (args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  try {
+    git(['init', '-q']);
+    git(['config', 'user.email', 'test@example.com']);
+    git(['config', 'user.name', 'Test']);
+    fs.writeFileSync(path.join(root, 'base.xml'), '<base/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'base']);
+    git(['branch', '-m', 'trunk']);
+    git(['checkout', '-qb', '727']);
+    fs.writeFileSync(path.join(root, 'branch.xml'), '<branch/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'branch']);
+    fs.writeFileSync(path.join(root, 'working.xml'), '<working/>');
+
+    assert.deepStrictEqual(await getGitFiles(root, '', false), ['branch.xml', 'working.xml']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ветка без коммитов в наборе PR показывает только рабочие изменения', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onec-loader-empty-pr-'));
+  const git = (args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  try {
+    git(['init', '-q']);
+    git(['config', 'user.email', 'test@example.com']);
+    git(['config', 'user.name', 'Test']);
+    fs.writeFileSync(path.join(root, 'base.xml'), '<base/>');
+    git(['add', '.']);
+    git(['commit', '-qm', 'base']);
+    git(['branch', '-m', 'main']);
+    git(['checkout', '-qb', '727']);
+    fs.writeFileSync(path.join(root, 'working.xml'), '<working/>');
+
+    assert.deepStrictEqual(await getGitFiles(root, '', false), ['working.xml']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('корень Configuration.xml ищется в src', () => {

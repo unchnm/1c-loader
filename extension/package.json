@@ -2,7 +2,7 @@
   "name": "onec-loader",
   "displayName": "1C: Loader",
   "description": "Частичная загрузка изменённых XML/BSL-файлов в базу 1С из боковой панели",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "icon": "media/icon.png",
   "publisher": "unchnm",
   "license": "MIT",
@@ -19,14 +19,15 @@
   "activationEvents": [
     "onView:onecLoader.panel",
     "onCommand:onecLoader.show",
-    "onCommand:onecLoader.refresh"
+    "onCommand:onecLoader.refresh",
+    "onCommand:onecLoader.openSettings"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "onec-loader",
-          "title": "1C",
+          "title": "1C: Loader",
           "icon": "$(onec-loader-logo)"
         }
       ]
@@ -51,6 +52,19 @@
         "title": "Обновить",
         "category": "1C",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "onecLoader.openSettings",
+        "title": "Настроить список файлов",
+        "category": "1C",
+        "icon": "$(gear)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "onecLoader.settingsMenu",
+        "label": "Дополнительные действия...",
+        "icon": "$(kebab-horizontal)"
       }
     ],
     "menus": {
@@ -58,9 +72,32 @@
         {
           "command": "onecLoader.refresh",
           "when": "view == onecLoader.panel",
+          "group": "navigation@1"
+        },
+        {
+          "submenu": "onecLoader.settingsMenu",
+          "when": "view == onecLoader.panel",
+          "group": "navigation@2"
+        }
+      ],
+      "onecLoader.settingsMenu": [
+        {
+          "command": "onecLoader.openSettings",
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "1C: Loader",
+      "properties": {
+        "onecLoader.onlyUncommittedChanges": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "title": "Display only uncommitted working-tree changes",
+          "markdownDescription": "Показывает только файлы с незакоммиченными изменениями в рабочей копии Git.\n\nЕсли отключить настройку, список также включает XML/BSL-файлы из коммитов текущей ветки, отсутствующих в остальных локальных и remote-tracking ветках, и незакоммиченные изменения. Удалённые файлы исключаются, дубли удаляются."
+        }
+      }
     },
     "icons": {
       "onec-loader-logo": {

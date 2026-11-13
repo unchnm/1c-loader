@@ -6,7 +6,7 @@ import { ChildProcess } from 'child_process';
 import {
   findGitRoot,
   findXmlRoot,
-  getGitChangedFiles,
+  getGitFiles,
   subPathOf,
   toLoadRelativePaths
 } from './changes';
@@ -58,6 +58,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private statusTone: StatusTone = 'muted';
   private loading = false;
   private reading = false;
+  private onlyUncommitted = true;
   private loadGen = 0;
   private settledGen = -1;
   private versionRetried = false;
@@ -66,7 +67,34 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
   private loadingExe = '';
   private progressDone: (() => void) | null = null;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.onlyUncommitted = this.readOnlyUncommittedSetting();
+    this.updateOnlyUncommittedContext();
+    this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+      if (!event.affectsConfiguration('onecLoader.onlyUncommittedChanges')) {
+        return;
+      }
+      const next = this.readOnlyUncommittedSetting();
+      if (next === this.onlyUncommitted) {
+        return;
+      }
+      this.onlyUncommitted = next;
+      this.updateOnlyUncommittedContext();
+      if (process.platform === 'win32' && !this.loading && !this.reading) {
+        void this.readChanges();
+      } else {
+        this.postState();
+      }
+    }));
+  }
+
+  private readOnlyUncommittedSetting(): boolean {
+    return vscode.workspace.getConfiguration('onecLoader').get<boolean>('onlyUncommittedChanges', true);
+  }
+
+  private updateOnlyUncommittedContext(): void {
+    void vscode.commands.executeCommand('setContext', 'onecLoader.onlyUncommitted', this.onlyUncommitted);
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -295,7 +323,7 @@ export class LoaderViewProvider implements vscode.WebviewViewProvider {
       }
       const xmlDir = findXmlRoot(folder) ?? folder;
       const subPath = subPathOf(gitRoot, xmlDir);
-      const names = await getGitChangedFiles(gitRoot, subPath);
+      const names = await getGitFiles(gitRoot, subPath, this.onlyUncommitted);
       this.files = names.map(name => ({ path: name, checked: true }));
       this.setStatus('', 'muted');
     } catch (error) {
