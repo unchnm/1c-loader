@@ -15,6 +15,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('onecLoader.refresh', () => {
       provider.refresh();
+    }),
+    vscode.commands.registerCommand('onecLoader.openSettings', () => {
+      void vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        '@id:onecLoader.onlyUncommittedChanges'
+      );
     })
   );
 }

@@ -19,14 +19,15 @@
   "activationEvents": [
     "onView:onecLoader.panel",
     "onCommand:onecLoader.show",
-    "onCommand:onecLoader.refresh"
+    "onCommand:onecLoader.refresh",
+    "onCommand:onecLoader.openSettings"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "onec-loader",
-          "title": "1C",
+          "title": "1C: Loader",
           "icon": "$(onec-loader-logo)"
         }
       ]
@@ -51,6 +52,19 @@
         "title": "Обновить",
         "category": "1C",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "onecLoader.openSettings",
+        "title": "Настроить список файлов",
+        "category": "1C",
+        "icon": "$(gear)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "onecLoader.settingsMenu",
+        "label": "Настройки списка файлов",
+        "icon": "$(kebab-horizontal)"
       }
     ],
     "menus": {
@@ -59,6 +73,17 @@
           "command": "onecLoader.refresh",
           "when": "view == onecLoader.panel",
           "group": "navigation@1"
+        },
+        {
+          "submenu": "onecLoader.settingsMenu",
+          "when": "view == onecLoader.panel",
+          "group": "navigation@2"
+        }
+      ],
+      "onecLoader.settingsMenu": [
+        {
+          "command": "onecLoader.openSettings",
+          "group": "navigation"
         }
       ]
     },
