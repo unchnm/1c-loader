@@ -63,7 +63,7 @@
     "submenus": [
       {
         "id": "onecLoader.settingsMenu",
-        "label": "Настройки списка файлов",
+        "label": "Дополнительные действия...",
         "icon": "$(kebab-horizontal)"
       }
     ],
